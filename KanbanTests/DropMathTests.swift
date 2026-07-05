@@ -33,6 +33,45 @@ struct DropMathTests {
         #expect(DropMath.insertionEdge(locationY: 40, rowHeight: 40) == .after)
     }
 
+    // MARK: - insertionEdge (horizontal midline, M4 list-column reordering)
+
+    @Test("horizontal: location left of the midline resolves to .before")
+    func leftOfMidlineIsBefore() {
+        #expect(DropMath.insertionEdge(locationX: 50, columnWidth: 280) == .before)
+    }
+
+    @Test("horizontal: location right of the midline resolves to .after")
+    func rightOfMidlineIsAfter() {
+        #expect(DropMath.insertionEdge(locationX: 200, columnWidth: 280) == .after)
+    }
+
+    @Test("horizontal: location exactly on the midline resolves to .after (midline belongs to the right half)")
+    func exactlyOnMidlineIsAfterHorizontal() {
+        #expect(DropMath.insertionEdge(locationX: 140, columnWidth: 280) == .after)
+    }
+
+    @Test("horizontal: left edge (x == 0) resolves to .before")
+    func leftEdgeIsBefore() {
+        #expect(DropMath.insertionEdge(locationX: 0, columnWidth: 280) == .before)
+    }
+
+    @Test("horizontal: right edge (x == columnWidth) resolves to .after")
+    func rightEdgeIsAfter() {
+        #expect(DropMath.insertionEdge(locationX: 280, columnWidth: 280) == .after)
+    }
+
+    // MARK: - insertionEdge (vertical behavior unchanged after generalizing to a shared helper)
+
+    @Test("vertical behavior is unaffected by the horizontal overload: above midline is still .before")
+    func verticalStillAboveMidlineIsBefore() {
+        #expect(DropMath.insertionEdge(locationY: 5, rowHeight: 40) == .before)
+    }
+
+    @Test("vertical behavior is unaffected by the horizontal overload: below midline is still .after")
+    func verticalStillBelowMidlineIsAfter() {
+        #expect(DropMath.insertionEdge(locationY: 35, rowHeight: 40) == .after)
+    }
+
     // MARK: - destinationIndex: cross-list (nil source index)
 
     @Test("cross-list drop before a row inserts at that row's index")

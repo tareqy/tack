@@ -16,7 +16,22 @@ enum DropMath {
     /// to insert before or after that row. The midline is the boundary; a point exactly on (or
     /// below) the midline belongs to the bottom half and resolves to `.after`.
     static func insertionEdge(locationY: CGFloat, rowHeight: CGFloat) -> InsertionEdge {
-        locationY < rowHeight / 2 ? .before : .after
+        edge(location: locationY, extent: rowHeight)
+    }
+
+    /// The horizontal twin of `insertionEdge(locationY:rowHeight:)`, for list-column reordering
+    /// (M4): resolves whether a pointer at `locationX` within a column of width `columnWidth` is
+    /// asking to insert before or after that column. Same midline-is-the-boundary semantics as the
+    /// vertical case (a point exactly on the midline resolves to `.after`).
+    static func insertionEdge(locationX: CGFloat, columnWidth: CGFloat) -> InsertionEdge {
+        edge(location: locationX, extent: columnWidth)
+    }
+
+    /// Axis-agnostic midline test shared by both orientations above: a `location` in `0...extent`
+    /// resolves to `.before` in the top/left half, `.after` in the bottom/right half (midline
+    /// inclusive of `.after`).
+    private static func edge(location: CGFloat, extent: CGFloat) -> InsertionEdge {
+        location < extent / 2 ? .before : .after
     }
 
     /// Converts a "drop onto the row at `rowIndex`, on its `edge` side" gesture into the integer

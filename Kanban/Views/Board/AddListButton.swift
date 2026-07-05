@@ -1,0 +1,59 @@
+import SwiftUI
+
+/// The right-edge, column-shaped "add list" affordance at the end of `BoardView`'s scroll of
+/// columns. A click reveals an inline text field (a ghost column) to name the new list; Enter
+/// creates it via `store.addList(to:name:)` (empty/whitespace input is a no-op that keeps the
+/// field open) and returns to the plain button; Esc cancels back to the plain button without
+/// creating anything.
+struct AddListButton: View {
+    let board: Board
+    let store: BoardStore
+    let columnWidth: CGFloat
+
+    @State private var isEditing = false
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isEditing {
+                TextField("List name", text: $draft)
+                    .textFieldStyle(.plain)
+                    .focused($isFocused)
+                    .onSubmit(commit)
+                    .onExitCommand(perform: cancel)
+                    .onAppear { isFocused = true }
+                    .accessibilityIdentifier(AccessibilityID.newListField)
+            } else {
+                Button {
+                    draft = ""
+                    isEditing = true
+                } label: {
+                    Label("Add List", systemImage: "plus")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.addListButton)
+            }
+        }
+        .padding(8)
+        .frame(width: columnWidth, alignment: .topLeading)
+        .frame(maxHeight: .infinity)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Empty/whitespace-only input is a no-op that stays in edit mode (so a stray Enter doesn't
+    /// silently dismiss the field the user is about to type into).
+    private func commit() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        store.addList(to: board, name: trimmed)
+        draft = ""
+        isEditing = false
+    }
+
+    private func cancel() {
+        isEditing = false
+        draft = ""
+    }
+}

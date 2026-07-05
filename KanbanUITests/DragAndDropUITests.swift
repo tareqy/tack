@@ -71,10 +71,50 @@ final class DragAndDropUITests: KanbanUITestCase {
                        "Reordered order should persist across relaunch")
     }
 
+    // MARK: - List reordering (M4, production BoardView — not the spike)
+
+    func testReorderLists() {
+        launch(fixture: "standard")
+
+        let toDoHeader = listHeader("To Do")
+        let doneColumn = list("Done")
+        XCTAssertTrue(toDoHeader.waitForExistence(timeout: timeout), "To Do header should exist")
+        XCTAssertTrue(doneColumn.waitForExistence(timeout: timeout), "Done column should exist")
+
+        let expectedOrder = ["In Progress", "Done", "To Do"]
+
+        // Drop "To Do" near the right edge of "Done" -> inserts after Done.
+        drag(toDoHeader, to: doneColumn, targetNormalizedOffset: CGVector(dx: 0.9, dy: 0.5), until: {
+            self.columnOrder() == expectedOrder
+        })
+
+        XCTAssertEqual(columnOrder(), expectedOrder, "columns should read In Progress, Done, To Do left to right")
+
+        // Persistence: relaunch WITHOUT reset; the new column order survives.
+        relaunchPreservingStore()
+
+        XCTAssertTrue(poll(timeout: timeout) { self.columnOrder() == expectedOrder },
+                      "reordered column order should persist across relaunch")
+    }
+
     // MARK: - Element lookups
 
     private func list(_ name: String) -> XCUIElement {
         app.descendants(matching: .any)[AccessibilityID.list(name)]
+    }
+
+    private func listHeader(_ name: String) -> XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.listHeader(name)]
+    }
+
+    /// The 3 standard-fixture list names ("To Do", "In Progress", "Done"), ordered left to right
+    /// by their container's on-screen X position — the canonical way to assert column order.
+    private func columnOrder() -> [String] {
+        ["To Do", "In Progress", "Done"]
+            .map { (name: $0, element: list($0)) }
+            .filter { $0.element.exists }
+            .sorted { $0.element.frame.minX < $1.element.frame.minX }
+            .map(\.name)
     }
 
     private func anyCard(_ title: String) -> XCUIElement {

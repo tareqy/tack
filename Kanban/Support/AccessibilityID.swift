@@ -22,4 +22,14 @@ enum AccessibilityID {
     static let renameBoardField = "rename-board-field"
     static let renameBoardConfirm = "rename-board-confirm"
     static let deleteBoardConfirm = "delete-board-confirm"
+
+    // MARK: - M4: lists UI
+
+    /// The list header's `InlineEditableText` (display text AND, while renaming, its `TextField`
+    /// — only one exists at a time, see that view's doc comment). Distinct from `list(_:)`, which
+    /// is the whole column's `.contain` container, so the two never collide as sibling queries.
+    static func listHeader(_ name: String) -> String { "list-header-\(name)" }
+    static func listCardCount(_ name: String) -> String { "list-count-\(name)" }
+    static let newListField = "new-list-field"
+    static let deleteListConfirm = "delete-list-confirm"
 }

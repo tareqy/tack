@@ -14,7 +14,7 @@ struct BoardRowView: View {
         // an XCUITest `.click()` (which taps the element's reported frame center) lands on the row.
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        // `.combine`, not `.contain`: see BoardPlaceholderView / RootView for why this matters —
+        // `.combine`, not `.contain`: see BoardView / RootView for why this matters —
         // `.combine` leaves don't inherit `root-view`'s identifier from their ancestor.
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(AccessibilityID.board(board.name))

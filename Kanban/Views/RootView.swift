@@ -70,7 +70,7 @@ struct RootView: View {
         if boards.isEmpty {
             EmptyStateView(onCreateBoard: { isPresentingCreateBoard = true })
         } else if let selectedBoardID, let board = boards.first(where: { $0.id == selectedBoardID }) {
-            BoardPlaceholderView(board: board)
+            BoardView(board: board, store: store)
         } else {
             Text("Select a board")
                 .foregroundStyle(.secondary)
