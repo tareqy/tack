@@ -51,7 +51,11 @@ struct KanbanApp: App {
         // The system default (~900x450) is too narrow for the sidebar toolbar ("Hide Sidebar" +
         // "New Board") to fit without overflowing into the "more toolbar items" popover, where
         // XCUITest can't reach it by identifier. A roomier default avoids that.
-        .defaultSize(width: 1100, height: 750)
+        //
+        // 1440x850 also ensures the sidebar plus a fresh board's three fixed-280pt columns plus
+        // the "Add List" ghost column all fit without horizontal scrolling, while still fitting
+        // within a 14" MacBook's 1512pt-wide logical display.
+        .defaultSize(width: 1440, height: 850)
     }
 
     @ViewBuilder
