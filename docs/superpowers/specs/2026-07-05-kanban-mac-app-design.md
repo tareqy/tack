@@ -119,7 +119,7 @@ Bare `+` from the PRD is dropped (conflicts with typing). Commands enabled/route
 **Phase B (P1):**
 - **M8 — Board themes:** 6 presets + custom hex (fields already in V1 — no migration). e2e: theme persists across relaunch.
 - **M9 — List collapse:** chevron → narrow pill (name+count); collapsed lists still valid drop targets (append).
-- **M10 — Urgency colors + dark-mode polish:** badge colors from `DueDateStatus` (overdue red, today orange, **tomorrow amber**, none gray); light/dark asset-catalog audit; badge exposes status via `accessibilityValue`.
+- **M10 — Urgency colors + dark-mode polish:** badge colors from `DueDateStatus` (overdue red, today orange, **tomorrow amber**, later-than-tomorrow gray; no due date = no badge); light/dark asset-catalog audit; badge exposes status via `accessibilityValue`.
 - **M11 — Label filter + wrap-up:** `LabelFilterBar` (8 chips, OR-filter, ⌘F), filtered/total count in list headers; README + P2 roadmap notes (Reminders sync via EventKit, Spotlight, checklists, Trello import).
 
 ## Part 4 — E2E test plan (XCUITest)
