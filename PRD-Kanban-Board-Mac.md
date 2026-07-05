@@ -198,8 +198,8 @@ MVP due dates are **date-only** (no time-of-day). A card is **overdue** when its
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
 | D-01 | Set due date on card (date only) | P0 | Date picker in card detail view; "Today", "Tomorrow", "Next Week" quick options; stored as start-of-day local time with `includesTime == false` |
-| D-02 | Show due date badge on card | P0 | Visual indicator directly on the card surface (no need to open detail) |
-| D-03 | Color-code by urgency | P0 | Overdue = **red**, Today = **orange**, Tomorrow = **amber** (not green — green reads as "done", and the app has no explicit done/complete state in MVP), No date = **gray** |
+| D-02 | Show due date badge on card | P0 | Visual indicator directly on the card surface (no need to open detail); cards with **no due date show no badge at all** |
+| D-03 | Color-code by urgency | P0 | For cards that have a due date: Overdue = **red**, Due today = **orange**, Due tomorrow = **amber**, Due later than tomorrow = neutral **gray** (not green — green reads as "done", and the app has no explicit done/complete state in MVP). Cards with no due date show no badge (see D-02) |
 | D-04 | Sync due dates → Apple Reminders | P2 | Post-MVP/roadmap. Uses the **EventKit** framework (`EKReminder`); requires `NSRemindersUsageDescription` in `Info.plist` and Reminders access authorization/entitlement |
 
 **MVP Scope:** D-01, D-02, D-03
@@ -339,7 +339,7 @@ These are explicitly deferred beyond the MVP, with an indicative roadmap priorit
 | Apple Watch companion | P2 | Small screen doesn't suit Kanban well |
 | Custom-theme dark/light contrast audit & accessibility polish | P1 | Baseline dark/light mode adaptation ships in MVP for free via SwiftUI; deeper contrast auditing for *custom* board themes (B-04) is deferred |
 | Cloud sync | P2 | Local-first means data lives on disk; multi-device sync needs backend infrastructure |
-| Backup/restore — import a previously exported JSON file | P1 | Export (E-01, §4.6) ships in MVP; round-trip import is deferred |
+| Backup/restore — import a previously exported JSON file | P1 | Tracked as E-02 (§4.6); export (E-01, §4.6) ships in MVP; round-trip import is deferred |
 | Optional due-date time-of-day | P1 | Schema carries an `includesTime` flag (default `false`) from v1 so this lands without a migration (§4.5, §6) |
 | Search across all boards (Spotlight integration) | P2 | Useful, but deferred to roadmap (§1) |
 | Apple Reminders sync (EventKit) | P2 | Deferred to roadmap (§1); see D-04 |
@@ -354,7 +354,7 @@ These are explicitly deferred beyond the MVP, with an indicative roadmap priorit
 | A-01 | The app targets **macOS 14 (Sonoma)** as the minimum OS version | SwiftUI features in use (`.draggable`/`.dropDestination`, current SwiftData APIs) require macOS 14+; no macOS 13 or earlier support |
 | A-02 | First launch shows an **empty-state onboarding view** with a prominent "Create your first board" action; the app must handle a **zero-board state** everywhere (sidebar, shortcuts, etc.), not assume a board is always open | Removes the "always at least one active board" assumption from v1.0; all board-dependent UI must gracefully degrade to the empty state |
 | A-03 | No authentication required for MVP — local-only data | Simplifies onboarding but means "multi-device" doesn't work out of the box |
-| A-04 | Card, list, and board drag-and-drop uses SwiftUI's **`.draggable`/`.dropDestination`** modifiers with `Transferable` payloads — **not** `DragGesture`/`NSDraggingSource`, which are a different, incompatible interaction layer | An early de-risking spike is planned to validate drag-and-drop feel/performance on large boards before broader feature work begins. If `.draggable`/`.dropDestination` proves insufficient, the fallback is a context-menu **"Move to List"** action (keyboard nav C-10/C-11 ships regardless as the accessible path) |
+| A-04 | Card and list drag-and-drop uses SwiftUI's **`.draggable`/`.dropDestination`** modifiers with `Transferable` payloads — **not** `DragGesture`/`NSDraggingSource`, which are a different, incompatible interaction layer | An early de-risking spike is planned to validate drag-and-drop feel/performance on large boards before broader feature work begins. If `.draggable`/`.dropDestination` proves insufficient, the fallback is a context-menu **"Move to List"** action (keyboard nav C-10/C-11 ships regardless as the accessible path) |
 | A-05 | Default list names ("To Do", "In Progress", "Done") are English-only for MVP | Can be localized in a future app release |
 | A-06 | Distribution is **local personal builds only** — App Sandbox enabled, ad-hoc/no code signing, no notarization | No Mac App Store submission or Developer ID pipeline for MVP; simplifies build/release but restricts installs to the author's own Macs |
 | A-07 | All builds and test suites run **headlessly via `xcodebuild`** | Enables scripted verification of the Definition of Done (§9) without a GUI dependency |
@@ -399,8 +399,8 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 ### 9.5 Due Dates
 
 - **D-01 — Set due date.** (See C-08.) Given the quick-option buttons ("Today"/"Tomorrow"/"Next Week"), when the user clicks one, then the date field populates with the corresponding date at local start-of-day.
-- **D-02 — Due date badge.** Given a card with a due date, when the board is displayed, then a badge showing the due date is visible on the card face without opening the detail view.
-- **D-03 — Color-code by urgency.** Given the current local date, when a card's due date is before today, then its badge is **red** (overdue); when equal to today, **orange**; when equal to tomorrow, **amber**; when the card has no due date, the badge/indicator is **gray** — never green.
+- **D-02 — Due date badge.** Given a card with a due date, when the board is displayed, then a badge showing the due date is visible on the card face without opening the detail view. Given a card with no due date, when the board is displayed, then no badge is shown on the card face.
+- **D-03 — Color-code by urgency.** Given the current local date and a card that has a due date, when its due date is before today, then its badge is **red** (overdue); when equal to today, **orange**; when equal to tomorrow, **amber**; when later than tomorrow, neutral **gray** — never green. Cards with no due date show no badge (see D-02).
 
 ### 9.6 Data Export
 
