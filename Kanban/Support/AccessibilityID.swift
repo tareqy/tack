@@ -11,4 +11,15 @@ enum AccessibilityID {
     static func dueDateBadge(card: String) -> String { "due-badge-\(card)" }
     static func labelChip(_ color: String) -> String { "label-chip-\(color)" }
     static let emptyStateCreateBoardButton = "empty-create-board"
+
+    // MARK: - M3: sidebar + board CRUD
+
+    static let boardDetail = "board-detail"
+    static let newBoardButton = "new-board-button"
+    static let boardNameField = "board-name-field"
+    static let boardEmojiField = "board-emoji-field"
+    static let createBoardConfirm = "create-board-confirm"
+    static let renameBoardField = "rename-board-field"
+    static let renameBoardConfirm = "rename-board-confirm"
+    static let deleteBoardConfirm = "delete-board-confirm"
 }

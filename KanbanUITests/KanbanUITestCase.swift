@@ -118,6 +118,51 @@ class KanbanUITestCase: XCTestCase {
                     thenHoldForDuration: holdDuration)
     }
 
+    // MARK: - Context menus
+
+    /// A row's `.contextMenu` item titled `title`, disambiguated from an identically-titled
+    /// standing menu-bar item (e.g. the standard Edit menu always has a "Delete" entry, so
+    /// `app.menuItems["Delete"]` alone matches BOTH it and a right-click menu's "Delete" and
+    /// throws "multiple matching elements"). Only the contextual popup's item is actually
+    /// on-screen/hittable at the moment it's open, so that's the disambiguator.
+    func contextMenuItem(_ title: String, timeout: TimeInterval = 10) -> XCUIElement {
+        hittableElement(app.menuItems, titled: title, timeout: timeout) ?? app.menuItems[title]
+    }
+
+    /// A button titled `title`, disambiguated the same way as `contextMenuItem`: macOS's
+    /// `confirmationDialog` buttons are plain descendants of `app` (not scoped under
+    /// `app.dialogs`, which never matches on this host), so a bare `app.buttons[title]` can
+    /// collide with an identically-titled button elsewhere in the window/menu structure. Scoped to
+    /// `app.windows` (NOT plain `app.buttons`): the simulated Touch Bar carries its own duplicate
+    /// of every dialog button, and — unlike the stray menu-bar "Delete" `contextMenuItem` guards
+    /// against — that duplicate reports `isHittable == true` while still being un-`click()`-able
+    /// ("cannot be called with Touch Bar elements"), so hittability alone doesn't disambiguate it.
+    func hittableButton(_ title: String, timeout: TimeInterval = 10) -> XCUIElement {
+        hittableElement(app.windows.buttons, titled: title, timeout: timeout) ?? app.windows.buttons[title]
+    }
+
+    private func hittableElement(_ query: XCUIElementQuery, titled title: String, timeout: TimeInterval) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let matches = query.matching(NSPredicate(format: "title == %@", title)).allElementsBoundByIndex
+            if let hittable = matches.first(where: { $0.isHittable }) { return hittable }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < deadline
+        return nil
+    }
+
+    // MARK: - Content
+
+    /// The visible text of an `.accessibilityElement(children: .combine)` element (e.g.
+    /// `board-detail`, a sidebar row). Combined SwiftUI text lands in the element's `value`
+    /// (comma-joined), NOT its `label` (which is empty for this shape) — checking `.label` here
+    /// is a trap that silently never matches. Falls back to `label` for elements where it IS the
+    /// meaningful property, so this is safe to use generally.
+    func combinedText(_ element: XCUIElement) -> String {
+        if let value = element.value as? String, !value.isEmpty { return value }
+        return element.label
+    }
+
     // MARK: - Queries
 
     /// Identifiers (e.g. "card-Spike A1") of every card element under `container`, ordered top to

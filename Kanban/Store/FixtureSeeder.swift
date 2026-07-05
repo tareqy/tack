@@ -13,9 +13,61 @@ enum FixtureSeeder {
         switch fixture {
         case "spike":
             seedSpike(context: context)
+        case "empty":
+            // Zero boards, but labels are still seeded (every later milestone assumes the 8-color
+            // palette exists regardless of which board fixture is in play).
+            BoardStore(context: context).ensureLabelsSeeded()
         default:
-            break // Other fixtures (e.g. "standard") arrive in M3.
+            // "standard" and any other value fall back to the same deterministic fixture used by
+            // every later milestone's UI tests.
+            seedStandard(context: context)
         }
+    }
+
+    /// Board "Groceries" (position 0) with realistic cards/labels/due-dates, plus an empty
+    /// "Work" board (position 1). Built via `BoardStore` (not direct model construction) so
+    /// position bookkeeping and due-date normalization go through the exact same invariants the
+    /// rest of the app relies on.
+    @MainActor
+    private static func seedStandard(context: ModelContext) {
+        let store = BoardStore(context: context)
+        store.ensureLabelsSeeded()
+
+        seedGroceries(store: store)
+        store.createBoard(name: "Work", emoji: "💼")
+    }
+
+    @MainActor
+    private static func seedGroceries(store: BoardStore) {
+        let board = store.createBoard(name: "Groceries", emoji: "🛒")
+        let lists = board.sortedLists
+        guard lists.count == 3 else { return } // ["To Do", "In Progress", "Done"]
+        let toDo = lists[0]
+        let inProgress = lists[1]
+        let done = lists[2]
+
+        let calendar = Calendar.current
+        let now = Date()
+        func daysFromNow(_ delta: Int) -> Date {
+            calendar.date(byAdding: .day, value: delta, to: now) ?? now
+        }
+
+        let buyMilk = store.addCard(to: toDo, title: "Buy milk")
+        store.setDueDate(daysFromNow(-1), on: buyMilk)
+        store.toggleLabel(.green, on: buyMilk)
+        store.toggleLabel(.blue, on: buyMilk)
+
+        let callPlumber = store.addCard(to: toDo, title: "Call plumber")
+        store.setDueDate(now, on: callPlumber)
+
+        let returnBooks = store.addCard(to: toDo, title: "Return library books")
+        store.setDueDate(daysFromNow(1), on: returnBooks)
+
+        let writeReport = store.addCard(to: inProgress, title: "Write report")
+        store.setDueDate(daysFromNow(5), on: writeReport)
+        store.toggleLabel(.red, on: writeReport)
+
+        store.addCard(to: done, title: "Book flights") // no due date
     }
 
     private static func seedSpike(context: ModelContext) {

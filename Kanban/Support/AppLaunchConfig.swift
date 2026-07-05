@@ -33,4 +33,13 @@ extension AppLaunchConfig {
     static var reset: Bool { current.reset }
     static var fixture: String? { current.fixture }
     static var storeName: String { current.storeName }
+
+    /// UserDefaults key backing `RootView`'s persisted `selectedBoardID`. Namespaced by
+    /// `storeName` under `--uitest` so distinct on-disk stores (each UI test launches its own,
+    /// per `KanbanUITestCase.launch`) never observe each other's persisted selection; production
+    /// always uses the bare key. See `KanbanApp.init` for the accompanying `--reset` clear, which
+    /// keeps this key from accumulating stale entries in UserDefaults across repeated test runs.
+    var selectedBoardDefaultsKey: String {
+        isUITest ? "selectedBoardID.\(storeName)" : "selectedBoardID"
+    }
 }
