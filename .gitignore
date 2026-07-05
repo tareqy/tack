@@ -1,0 +1,4 @@
+Kanban.xcodeproj/
+.build/
+*.xcresult
+.DS_Store
