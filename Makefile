@@ -1,3 +1,6 @@
+# xcode-select on this machine points at Command Line Tools; xcodebuild needs full Xcode
+export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
+
 ARCH := $(shell uname -m)
 DEST := platform=macOS,arch=$(ARCH)
 
