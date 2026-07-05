@@ -1,10 +1,137 @@
 import XCTest
 
 class KanbanUITestCase: XCTestCase {
+    /// The most recently launched app; reassigned by `launch` / `relaunchPreservingStore`.
+    private(set) var app: XCUIApplication!
+
+    private var currentFixture = "standard"
+    private var currentStoreName = ""
+
+    // MARK: - Launch
+
+    /// Original M0 smoke-test entry point: bare `--uitest`, no fixture. Kept for SmokeUITests.
+    @discardableResult
     func launchApp() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments = ["--uitest"]
-        app.launch()
-        return app
+        let launched = XCUIApplication()
+        launched.launchArguments = ["--uitest"]
+        launched.launch()
+        app = launched
+        ensureWindow(launched)
+        return launched
+    }
+
+    /// Launches the app against an on-disk UI-test store seeded with `fixture`. `reset: true`
+    /// (the default) wipes the store first for a clean start; the store name defaults to a
+    /// sanitized form of the test's name so tests don't collide on disk.
+    @discardableResult
+    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil) -> XCUIApplication {
+        let resolvedStore = storeName ?? Self.sanitized(name)
+        currentFixture = fixture
+        currentStoreName = resolvedStore
+
+        let launched = XCUIApplication()
+        var args = ["--uitest", "--fixture", fixture, "--store-name", resolvedStore]
+        if reset { args.append("--reset") }
+        launched.launchArguments = args
+        launched.launch()
+        app = launched
+        ensureWindow(launched)
+        return launched
+    }
+
+    /// Terminates and relaunches against the SAME on-disk store WITHOUT `--reset`, so the
+    /// previous launch's mutations persist and can be re-asserted.
+    @discardableResult
+    func relaunchPreservingStore() -> XCUIApplication {
+        app?.terminate()
+        let relaunched = XCUIApplication()
+        relaunched.launchArguments = ["--uitest", "--fixture", currentFixture, "--store-name", currentStoreName]
+        relaunched.launch()
+        app = relaunched
+        ensureWindow(relaunched)
+        return relaunched
+    }
+
+    /// macOS does not auto-present the `WindowGroup` window under XCUITest automation (window
+    /// restoration is suppressed), so a fresh launch can land with zero windows. Nudge one open
+    /// via the standard "New" command when that happens, then wait for it to exist.
+    private func ensureWindow(_ app: XCUIApplication) {
+        _ = app.wait(for: .runningForeground, timeout: 15)
+        if app.windows.firstMatch.waitForExistence(timeout: 3) { return }
+
+        let newWindowItem = app.menuBars.menuItems["New Kanban Window"]
+        if newWindowItem.waitForExistence(timeout: 5) {
+            newWindowItem.click()
+        } else {
+            app.typeKey("n", modifierFlags: .command)
+        }
+        _ = app.windows.firstMatch.waitForExistence(timeout: 10)
+    }
+
+    // MARK: - Drag
+
+    /// Presses `element`, drags to `targetElement` (at `targetNormalizedOffset`), and holds
+    /// briefly over the target before releasing so SwiftUI's drop destination registers the drop.
+    /// After the drag it POLLS `until` (up to `settleTimeout`) before deciding whether to retry —
+    /// this is critical: a successful-but-slow drop must not be mistaken for a failure, or the
+    /// retry would drag a second time and corrupt state. Only a genuinely failed drop (still false
+    /// after the poll) triggers exactly one retry.
+    func drag(_ element: XCUIElement,
+              to targetElement: XCUIElement,
+              targetNormalizedOffset: CGVector,
+              pressDuration: TimeInterval = 0.6,
+              holdDuration: TimeInterval = 0.4,
+              settleTimeout: TimeInterval = 4,
+              until postcondition: (() -> Bool)? = nil) {
+        performDrag(element, to: targetElement, offset: targetNormalizedOffset,
+                    pressDuration: pressDuration, holdDuration: holdDuration)
+
+        guard let postcondition else { return }
+        if poll(timeout: settleTimeout, postcondition) { return }
+
+        performDrag(element, to: targetElement, offset: targetNormalizedOffset,
+                    pressDuration: pressDuration, holdDuration: holdDuration)
+        _ = poll(timeout: settleTimeout, postcondition)
+    }
+
+    /// Polls `condition` until it is true or `timeout` elapses. Returns the final value.
+    @discardableResult
+    func poll(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return condition()
+    }
+
+    private func performDrag(_ element: XCUIElement,
+                             to targetElement: XCUIElement,
+                             offset: CGVector,
+                             pressDuration: TimeInterval,
+                             holdDuration: TimeInterval) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = targetElement.coordinate(withNormalizedOffset: offset)
+        start.press(forDuration: pressDuration,
+                    thenDragTo: end,
+                    withVelocity: .default,
+                    thenHoldForDuration: holdDuration)
+    }
+
+    // MARK: - Queries
+
+    /// Identifiers (e.g. "card-Spike A1") of every card element under `container`, ordered top to
+    /// bottom by on-screen Y position — the canonical way to assert visual list order.
+    func cardIdentifiersByPosition(under container: XCUIElement) -> [String] {
+        let cards = container.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-"))
+            .allElementsBoundByIndex
+        return cards.sorted { $0.frame.minY < $1.frame.minY }.map(\.identifier)
+    }
+
+    // MARK: - Helpers
+
+    static func sanitized(_ raw: String) -> String {
+        String(raw.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
     }
 }
