@@ -32,4 +32,14 @@ enum AccessibilityID {
     static func listCardCount(_ name: String) -> String { "list-count-\(name)" }
     static let newListField = "new-list-field"
     static let deleteListConfirm = "delete-list-confirm"
+
+    // MARK: - M5: cards UI
+
+    /// The card's title `InlineEditableText` (display text AND, while renaming, its `TextField`).
+    /// Deliberately NOT prefixed `card-`: the whole card row's `.contain` container carries
+    /// `card(title)`, and `cardIdentifiersByPosition` (the canonical order assertion) matches
+    /// `identifier BEGINSWITH "card-"` — a `card-`-prefixed title would double-count every row.
+    static func cardTitle(_ title: String) -> String { "cardtitle-\(title)" }
+    /// The single inline "+ Add card" TextField (only one is ever open at a time, like `newListField`).
+    static let newCardField = "new-card-field"
 }

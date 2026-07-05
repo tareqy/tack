@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// The real board surface (M4), replacing `BoardPlaceholderView`: a header showing the selected
-/// board's emoji + name, followed by a horizontal scroll of `ListColumnView`s and a trailing
-/// `AddListButton`. Card content within each column is read-only in this milestone — creating,
-/// editing, deleting, and dragging cards arrive in M5.
+/// The real board surface: a header showing the selected board's emoji + name, followed by a
+/// horizontal scroll of `ListColumnView`s and a trailing `AddListButton`. Cards are fully
+/// interactive (M5): create/rename/delete/select plus production drag-and-drop.
 struct BoardView: View {
     let board: Board
     let store: BoardStore
@@ -13,6 +12,9 @@ struct BoardView: View {
     static let columnWidth: CGFloat = 280
 
     @State private var targetedListID: UUID?
+    /// Board-local single-card selection. M7 migrates this to `FocusedValues` (for the ⌘⌫ Edit-menu
+    /// shortcut); keep it simple @State for now, per the brief.
+    @State private var selectedCardID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -42,7 +44,8 @@ struct BoardView: View {
                         list: list,
                         store: store,
                         columnWidth: Self.columnWidth,
-                        targetedListID: $targetedListID
+                        targetedListID: $targetedListID,
+                        selectedCardID: $selectedCardID
                     )
                 }
                 AddListButton(board: board, store: store, columnWidth: Self.columnWidth)

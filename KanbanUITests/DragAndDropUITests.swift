@@ -97,10 +97,139 @@ final class DragAndDropUITests: KanbanUITestCase {
                       "reordered column order should persist across relaunch")
     }
 
+    // MARK: - Card drag on the production board (M5)
+
+    /// Reorder within a list: drag "Buy milk" onto the bottom third of "Return library books"
+    /// (insert after) → To Do becomes [Call plumber, Return library books, Buy milk]; persists.
+    func testReorderWithinListOnBoard() {
+        launch(fixture: "standard")
+
+        let toDo = list("To Do")
+        XCTAssertTrue(toDo.waitForExistence(timeout: timeout), "To Do should exist")
+        let buyMilk = anyCard("Buy milk")
+        let returnBooks = anyCard("Return library books")
+        XCTAssertTrue(buyMilk.waitForExistence(timeout: timeout))
+        XCTAssertTrue(returnBooks.waitForExistence(timeout: timeout))
+
+        let expectedOrder = expected("Call plumber", "Return library books", "Buy milk")
+        drag(buyMilk, to: returnBooks, targetNormalizedOffset: CGVector(dx: 0.5, dy: 0.8), until: {
+            self.cardIdentifiersByPosition(under: toDo) == expectedOrder
+        })
+
+        XCTAssertEqual(cardIdentifiersByPosition(under: toDo), expectedOrder,
+                       "To Do should read Call plumber, Return library books, Buy milk")
+
+        relaunchPreservingStore()
+        let toDoAfter = list("To Do")
+        XCTAssertTrue(toDoAfter.waitForExistence(timeout: timeout))
+        XCTAssertTrue(poll(timeout: timeout) { self.cardIdentifiersByPosition(under: toDoAfter) == expectedOrder },
+                      "reordered order should persist across relaunch")
+    }
+
+    /// Cross-list move: drag "Write report" onto the "Done" footer append zone → Done becomes
+    /// [Book flights, Write report], source "In Progress" empties; persists.
+    func testMoveCardAcrossListsOnBoard() {
+        launch(fixture: "standard")
+
+        let inProgress = list("In Progress")
+        let done = list("Done")
+        XCTAssertTrue(inProgress.waitForExistence(timeout: timeout))
+        XCTAssertTrue(done.waitForExistence(timeout: timeout))
+        let writeReport = anyCard("Write report")
+        XCTAssertTrue(writeReport.waitForExistence(timeout: timeout))
+
+        drag(writeReport, to: done, targetNormalizedOffset: CGVector(dx: 0.5, dy: 0.6), until: {
+            self.card("Write report", under: self.list("Done")).exists
+        })
+
+        XCTAssertTrue(card("Write report", under: list("Done")).waitForExistence(timeout: timeout),
+                      "Write report should move under Done")
+        XCTAssertEqual(cardIdentifiersByPosition(under: list("Done")),
+                       expected("Book flights", "Write report"),
+                       "Done should read Book flights, Write report by frame order")
+        XCTAssertTrue(poll(timeout: timeout) { self.cardIdentifiersByPosition(under: self.list("In Progress")).isEmpty },
+                      "In Progress should be empty after Write report leaves")
+
+        relaunchPreservingStore()
+        let doneAfter = list("Done")
+        XCTAssertTrue(doneAfter.waitForExistence(timeout: timeout))
+        XCTAssertTrue(poll(timeout: timeout) { self.card("Write report", under: doneAfter).exists },
+                      "moved card should persist under Done across relaunch")
+    }
+
+    /// Drop onto a completely empty list: on board "Work", create "Solo" in To Do then drag it onto
+    /// the empty "Done" body → contained under Done, To Do empties.
+    func testDragToEmptyList() {
+        launch(fixture: "standard")
+
+        let workRow = boardRow("Work")
+        XCTAssertTrue(workRow.waitForExistence(timeout: timeout))
+        workRow.click()
+
+        let toDo = list("To Do")
+        let done = list("Done")
+        XCTAssertTrue(toDo.waitForExistence(timeout: timeout))
+        XCTAssertTrue(done.waitForExistence(timeout: timeout))
+
+        // Create "Solo" via the add-card row, then close the field so it can't shadow the drag.
+        let addButton = addCardButton("To Do")
+        XCTAssertTrue(addButton.waitForExistence(timeout: timeout))
+        addButton.click()
+        let field = newCardField
+        XCTAssertTrue(field.waitForExistence(timeout: timeout))
+        field.click()
+        field.typeText("Solo")
+        field.typeKey(.enter, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.card("Solo", under: toDo).exists }, "Solo should be created")
+        field.typeKey(.escape, modifierFlags: [])
+
+        let solo = anyCard("Solo")
+        XCTAssertTrue(solo.waitForExistence(timeout: timeout))
+        drag(solo, to: done, targetNormalizedOffset: CGVector(dx: 0.5, dy: 0.5), until: {
+            self.card("Solo", under: self.list("Done")).exists
+        })
+
+        XCTAssertTrue(card("Solo", under: list("Done")).waitForExistence(timeout: timeout),
+                      "Solo should move into the empty Done list")
+        XCTAssertTrue(poll(timeout: timeout) { self.cardIdentifiersByPosition(under: self.list("To Do")).isEmpty },
+                      "To Do should be empty after Solo moves out")
+    }
+
+    /// COEXISTENCE REGRESSION: with card drop destinations present on every column, a list-header
+    /// drag (ListTransfer) must STILL reorder columns. Drag "To Do" right of "Done" on Groceries.
+    func testListDragStillWorksWithCardDestinations() {
+        launch(fixture: "standard")
+
+        let toDoHeader = listHeader("To Do")
+        let doneColumn = list("Done")
+        XCTAssertTrue(toDoHeader.waitForExistence(timeout: timeout))
+        XCTAssertTrue(doneColumn.waitForExistence(timeout: timeout))
+
+        let expectedOrder = ["In Progress", "Done", "To Do"]
+        drag(toDoHeader, to: doneColumn, targetNormalizedOffset: CGVector(dx: 0.9, dy: 0.5), until: {
+            self.columnOrder() == expectedOrder
+        })
+
+        XCTAssertEqual(columnOrder(), expectedOrder,
+                       "ListTransfer drops must still fire with CardTransfer destinations present")
+    }
+
     // MARK: - Element lookups
 
     private func list(_ name: String) -> XCUIElement {
         app.descendants(matching: .any)[AccessibilityID.list(name)]
+    }
+
+    private func boardRow(_ name: String) -> XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.board(name)]
+    }
+
+    private func addCardButton(_ listName: String) -> XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.addCardButton(list: listName)]
+    }
+
+    private var newCardField: XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.newCardField]
     }
 
     private func listHeader(_ name: String) -> XCUIElement {

@@ -23,6 +23,13 @@ struct InlineEditableText: View {
     private let accessibilityID: String
     private let onCommit: (String) -> Void
 
+    /// Optional external "please begin editing now" trigger, for callers that start the edit from
+    /// somewhere other than the click gesture — M5's card context-menu "Rename Card". The caller
+    /// flips it to `true`; this view begins editing and immediately flips it back to `false` so the
+    /// next flip is observed. Defaults to a constant `false` binding, so the M4 list-header call
+    /// site (which only ever edits via double-click) is unchanged.
+    @Binding private var beginEditSignal: Bool
+
     @State private var isEditing = false
     @State private var draft = ""
     @FocusState private var isFocused: Bool
@@ -32,12 +39,14 @@ struct InlineEditableText: View {
         beginEditOn: EditTrigger = .doubleClick,
         font: Font = .body,
         accessibilityID: String,
+        beginEditSignal: Binding<Bool> = .constant(false),
         onCommit: @escaping (String) -> Void
     ) {
         self.text = text
         self.beginEditOn = beginEditOn
         self.font = font
         self.accessibilityID = accessibilityID
+        self._beginEditSignal = beginEditSignal
         self.onCommit = onCommit
     }
 
@@ -60,9 +69,18 @@ struct InlineEditableText: View {
                     .accessibilityIdentifier(accessibilityID)
             }
         }
+        .onChange(of: beginEditSignal) { _, shouldBegin in
+            if shouldBegin {
+                beginEditing()
+                beginEditSignal = false
+            }
+        }
     }
 
     private func beginEditing() {
+        // Re-entrancy guard: a stray trigger (e.g. a second Rename click, or a click landing inside
+        // the field) must not reset an in-progress `draft` back to the original text.
+        guard !isEditing else { return }
         draft = text
         isEditing = true
     }
