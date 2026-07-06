@@ -64,21 +64,21 @@ struct SidebarView: View {
     }
 
     /// Deletes the pending board. If it was selected, moves selection to the next board by
-    /// position (the survivor immediately after it, or — if it was last — the new last survivor),
-    /// or nil if none remain.
+    /// position via the pure `NextBoardSelection.resolve` (the survivor immediately after it, or —
+    /// if it was last — the new last survivor), or nil if none remain.
     private func performDelete() {
         guard let board = boardPendingDeletion else { return }
         let wasSelected = selection == board.id
-        let survivors = boards
-            .filter { $0.id != board.id }
-            .sorted { $0.position < $1.position }
+        let nextSelection = NextBoardSelection.resolve(
+            afterDeleting: board.id,
+            boards: boards.map { (id: $0.id, position: $0.position) }
+        )
 
         store.deleteBoard(board)
         boardPendingDeletion = nil
 
         if wasSelected {
-            let next = survivors.first { $0.position > board.position } ?? survivors.last
-            selection = next?.id
+            selection = nextSelection
         }
     }
 }

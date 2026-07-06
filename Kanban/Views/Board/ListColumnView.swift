@@ -32,6 +32,9 @@ struct ListColumnView: View {
     @Binding var targetedListID: UUID?
     @Binding var selectedCardID: UUID?
     @Binding var selectedDetailCard: Card?
+    /// Command trigger from BoardView (⌘N): when it equals this list's id, open the inline
+    /// add-card editor. This column resets it to nil after handling so the same list can retrigger.
+    @Binding var addCardListID: UUID?
 
     /// Same fixed row height as the M2 spike, so its DropMath reasoning carries over unchanged.
     private let rowHeight: CGFloat = 44
@@ -57,6 +60,13 @@ struct ListColumnView: View {
                 .opacity(targetedListID == list.id ? 1 : 0)
         }
         .contentShape(Rectangle())
+        // ⌘N routing: BoardView sets addCardListID to the target list; the matching column opens
+        // its inline editor and clears the token (so re-triggering the same list fires again).
+        .onChange(of: addCardListID) { _, newValue in
+            guard newValue == list.id else { return }
+            startAddingCard()
+            addCardListID = nil
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.list(list.name))
         // COEXISTENCE (empirically established — see the type doc for the full story): the column

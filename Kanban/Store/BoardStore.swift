@@ -67,11 +67,32 @@ final class BoardStore {
         }
     }
 
+    /// Deletes the board. The two-level cascade (board → lists → cards) runs with the undo
+    /// manager DETACHED and the undo stack is cleared afterwards, so board deletion is NOT
+    /// undoable — deliberately, and only for this operation:
+    ///
+    /// SwiftData's automatic undo snapshotting of a two-level cascade delete crashes with a fatal
+    /// assertion whenever an undo manager is attached to an ON-DISK context (EXC_BREAKPOINT inside
+    /// SwiftData's cascade processing; reproduced three times under --uitest with identical stacks
+    /// through `deleteBoard → withUndoGroup` — crash reports Kanban-2026-07-06-092132/100952/
+    /// 101206.ips). `groupsByEvent` true vs false makes no difference (the crash is in snapshot
+    /// creation, not grouping), and in-memory unit stores never hit it — which is why the M1 suite
+    /// stayed green while every real-app board delete died. Single-level shapes are unaffected:
+    /// `deleteList` (list → cards) and `deleteCard` run green with the manager attached, so they
+    /// keep their original undo-grouped form.
+    ///
+    /// The stack clear is required for safety, not convenience: earlier registered groups (board
+    /// renames, card ops on this board) hold references to the now-deleted objects, and undoing
+    /// them after the delete would mutate deleted rows. Losing undo history on a board delete is
+    /// acceptable UX — the operation is already confirmation-gated in SidebarView, and the PRD's
+    /// undo story centres on card operations, which remain fully undoable.
     func deleteBoard(_ board: Board) {
-        withUndoGroup("Delete Board") {
-            context.delete(board)
-            save()
-        }
+        let undoManager = context.undoManager
+        context.undoManager = nil
+        context.delete(board)
+        save()
+        context.undoManager = undoManager
+        undoManager?.removeAllActions()
     }
 
     /// Pure — case-insensitive substring match on name; empty query returns all boards.

@@ -9,6 +9,10 @@ struct AddListButton: View {
     let board: Board
     let store: BoardStore
     let columnWidth: CGFloat
+    /// Command trigger from BoardView (⌥⌘N): a change to this monotonic token opens the inline
+    /// editor. Passed by value (not a binding) because the button only reacts to changes, never
+    /// writes it back.
+    var openEditorToken: Int = 0
 
     @State private var isEditing = false
     @State private var draft = ""
@@ -40,6 +44,11 @@ struct AddListButton: View {
         .frame(width: columnWidth, alignment: .topLeading)
         .frame(maxHeight: .infinity)
         .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+        .onChange(of: openEditorToken) { _, _ in
+            draft = ""
+            isEditing = true
+            isFocused = true
+        }
     }
 
     /// Empty/whitespace-only input is a no-op that stays in edit mode (so a stray Enter doesn't

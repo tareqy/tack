@@ -4,17 +4,24 @@ import SwiftData
 @main
 struct KanbanApp: App {
     private let config: AppLaunchConfig
-    private let container: ModelContainer
-    /// nil only for the `--uitest --fixture spike` path, which owns its own `BoardStore` inside
-    /// `SpikeRootView` (see M2). Every other path (production and every other `--uitest` fixture)
-    /// builds one here and injects it via `.environment(_:)`.
+    /// nil ONLY when the production container fails to open (see `launchErrorMessage`); every
+    /// `--uitest` path and a healthy production launch have one.
+    private let container: ModelContainer?
+    /// nil for the `--uitest --fixture spike` path (which owns its own `BoardStore` inside
+    /// `SpikeRootView`, see M2) and for a failed production launch. Every other path builds one
+    /// here and injects it via `.environment(_:)`.
     private let store: BoardStore?
+    /// Set when the on-disk production store can't be opened — the app shows a minimal error
+    /// window instead of crashing (M7). Never set under `--uitest`.
+    private let launchErrorMessage: String?
 
     init() {
         let config = AppLaunchConfig.current
         self.config = config
 
         if config.isUITest {
+            // Test-store failures are a test-harness bug, not a user-facing condition — keep the
+            // hard failure so it surfaces loudly in CI rather than silently degrading.
             let uiContainer = try! ModelContainerFactory.uiTest(storeName: config.storeName, reset: config.reset)
             FixtureSeeder.seed(config.fixture ?? "standard", context: uiContainer.mainContext)
             container = uiContainer
@@ -28,12 +35,22 @@ struct KanbanApp: App {
             }
 
             store = config.fixture == "spike" ? nil : BoardStore(context: uiContainer.mainContext)
+            launchErrorMessage = nil
         } else {
-            let productionContainer = try! ModelContainerFactory.production()
-            let productionStore = BoardStore(context: productionContainer.mainContext)
-            productionStore.ensureLabelsSeeded()
-            container = productionContainer
-            store = productionStore
+            // Graceful production-container failure (M7): a corrupt/unreadable store shows an error
+            // window rather than a `try!` crash. No recovery logic beyond surfacing the message.
+            do {
+                let productionContainer = try ModelContainerFactory.production()
+                let productionStore = BoardStore(context: productionContainer.mainContext)
+                productionStore.ensureLabelsSeeded()
+                container = productionContainer
+                store = productionStore
+                launchErrorMessage = nil
+            } catch {
+                container = nil
+                store = nil
+                launchErrorMessage = "Kanban couldn't open its database: \(error.localizedDescription) Quit and retry, or contact support."
+            }
         }
     }
 
@@ -56,15 +73,20 @@ struct KanbanApp: App {
         // the "Add List" ghost column all fit without horizontal scrolling, while still fitting
         // within a 14" MacBook's 1512pt-wide logical display.
         .defaultSize(width: 1440, height: 850)
+        // The menu-bar command layer (M7). Attached at the WindowGroup scene level — the M3 trap is
+        // that commands/toolbars contributed from inside the split view never register.
+        .commands { AppCommands() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if config.isUITest, config.fixture == "spike" {
+        if let launchErrorMessage {
+            DatabaseErrorView(message: launchErrorMessage)
+        } else if config.isUITest, config.fixture == "spike", let container {
             // Drag e2e regression path (M2): unchanged.
             SpikeRootView()
                 .modelContainer(container)
-        } else if let store {
+        } else if let store, let container {
             RootView(config: config)
                 .modelContainer(container)
                 .environment(store)
