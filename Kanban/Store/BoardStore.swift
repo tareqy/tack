@@ -186,6 +186,7 @@ final class BoardStore {
     /// ("Collapse List" / "Expand List"). Purely a display flag on the list itself — touches
     /// neither its own position nor any sibling's, so collapsing/expanding never reshuffles order.
     func setCollapsed(_ list: BoardList, _ collapsed: Bool) {
+        guard list.isCollapsed != collapsed else { return }
         withUndoGroup(collapsed ? "Collapse List" : "Expand List") {
             list.isCollapsed = collapsed
             save()

@@ -94,4 +94,27 @@ struct BoardStoreListTests {
         env.undoManager?.redo()
         #expect(list.isCollapsed == false)
     }
+
+    @Test("setCollapsed with the current value registers no undo step")
+    func setCollapsedNoOpRegistersNoUndoStep() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "Board", emoji: nil)
+        let list = board.sortedLists[0]
+        #expect(list.isCollapsed == false)
+
+        // Already expanded: calling setCollapsed(false) must be a no-op. This is what
+        // makes the pill's double `expand()` binding (chevron Button + onTapGesture) safe —
+        // a double-fire pushes zero extra undo groups.
+        env.store.setCollapsed(list, false)
+        #expect(list.isCollapsed == false)
+
+        // createBoard == exactly 1 undoable user step. If the no-op call above had
+        // registered a 2nd (spurious) group, this count would be 2.
+        var undoCount = 0
+        while env.undoManager?.canUndo == true {
+            env.undoManager?.undo()
+            undoCount += 1
+        }
+        #expect(undoCount == 1)
+    }
 }

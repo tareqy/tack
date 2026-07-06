@@ -2,8 +2,9 @@ import XCTest
 
 /// M9 exit-gate tests for list collapse/expand (L-04): a column collapses to a narrow vertical
 /// pill (name + card count), the state persists across relaunch, and a collapsed pill is still a
-/// valid drop target (cards append) that list-reorder drags route AROUND. Fixture "standard"
-/// (board Groceries selected by default: lists To Do / In Progress / Done).
+/// valid drop target — cards append, list-reorder drags route AROUND it, and a list-reorder drag
+/// dropped directly ONTO the pill itself resolves via the pill's own (narrower) midline math.
+/// Fixture "standard" (board Groceries selected by default: lists To Do / In Progress / Done).
 final class CollapseUITests: KanbanUITestCase {
 
     private let timeout: TimeInterval = 15
@@ -115,6 +116,55 @@ final class CollapseUITests: KanbanUITestCase {
 
         XCTAssertEqual(columnOrder(), expectedOrder,
                        "list-drag routing must work around the collapsed pill: In Progress(pill), Done, To Do")
+    }
+
+    // MARK: - List drag dropped directly onto a collapsed pill
+
+    /// Unlike `testListReorderWithCollapsedPresent` (which routes a drag AROUND a collapsed pill
+    /// by dropping on a full-width neighbor), this drops directly ONTO the pill itself, exercising
+    /// `ListColumnView`'s pill-side `handleDrop` call, which resolves before/after at
+    /// `collapsedWidth` (44pt) rather than the full `columnWidth` (280pt).
+    ///
+    /// Trace (siblings before the drop: To Do=0, In Progress=1, Done=2 — In Progress collapsed):
+    /// dropping on the pill's center (normalized offset 0.5, 0.5) puts `location.x` at
+    /// `collapsedWidth / 2` — exactly the midline. `DropMath`'s midline test is
+    /// `location < extent / 2 ? .before : .after`, i.e. a point ON the midline is NOT `<` it, so it
+    /// resolves to `.after` (documented at `DropMath.edge` as "midline inclusive of .after").
+    /// `rowIndex` (In Progress's index — the pill receiving the drop) = 1; `fromIndex` (To Do's
+    /// index) = 0; since `rowIndex > fromIndex`, `destinationIndex`'s `base = rowIndex - 1 = 0`;
+    /// `.after` → target index = `base + 1 = 1`. `moveList(toDo, to: 1)` removes To Do from
+    /// [To Do, In Progress, Done] (leaving [In Progress, Done]) and reinserts it at index 1 →
+    /// [In Progress, To Do, Done]. So To Do lands immediately to the RIGHT of the still-collapsed
+    /// In Progress pill: In Progress, To Do, Done.
+    func testListDragOntoPillReorders() {
+        launch(fixture: "standard")
+
+        collapseButton("In Progress").click()
+        XCTAssertTrue(poll(timeout: timeout) { self.collapseState("In Progress") == "collapsed" },
+                      "In Progress should be collapsed before the drop")
+
+        let toDoHeader = listHeader("To Do")
+        let inProgressPill = list("In Progress")
+        XCTAssertTrue(toDoHeader.waitForExistence(timeout: timeout), "To Do header should exist")
+        XCTAssertTrue(inProgressPill.waitForExistence(timeout: timeout), "In Progress pill should exist")
+
+        let expectedOrder = ["In Progress", "To Do", "Done"]
+
+        // Drop To Do directly on the collapsed pill's center.
+        drag(toDoHeader, to: inProgressPill, targetNormalizedOffset: CGVector(dx: 0.5, dy: 0.5), until: {
+            self.columnOrder() == expectedOrder
+        })
+
+        XCTAssertEqual(columnOrder(), expectedOrder,
+                       "dropping To Do onto the collapsed In Progress pill's center should land it just after the pill")
+        XCTAssertEqual(collapseState("In Progress"), "collapsed",
+                       "In Progress should remain collapsed after being the drop target of a list reorder")
+
+        // Persistence: relaunch WITHOUT reset; the new column order survives.
+        relaunchPreservingStore()
+
+        XCTAssertTrue(poll(timeout: timeout) { self.columnOrder() == expectedOrder },
+                      "the reordered column order should persist across relaunch")
     }
 
     // MARK: - Element lookups
