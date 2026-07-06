@@ -40,7 +40,14 @@ struct LabelPicker: View {
             .padding(.vertical, 6)
             .background(Capsule().fill(isSelected ? color.swatchColor.opacity(0.85) : Color.clear))
             .overlay(Capsule().strokeBorder(color.swatchColor, lineWidth: isSelected ? 0 : 1.5))
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            // M10 dark-mode audit: was `Color.white` for the selected state — measured (via
+            // screenshot pixel sampling of every one of the 8 label colors, in BOTH appearances)
+            // at WCAG contrast ratios as low as 1.36:1 (yellow, light mode) against white, i.e.
+            // badly failing the 4.5:1 text minimum for EVERY color in EVERY appearance. `.black`
+            // passes 4.5:1 for all 8 colors in both light and dark mode (lowest measured: 5.63:1),
+            // so — unlike the due-date badges, which need genuinely different per-appearance
+            // colors — a single fixed swap is correct here without any appearance branching.
+            .foregroundStyle(isSelected ? Color.black : Color.primary)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(AccessibilityID.labelChip(color.rawValue))

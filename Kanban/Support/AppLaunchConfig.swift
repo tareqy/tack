@@ -9,6 +9,13 @@ struct AppLaunchConfig {
     let reset: Bool
     let fixture: String?
     let storeName: String
+    /// M10, test-only: forces the whole app's appearance via `--appearance light|dark`, read by
+    /// `KanbanApp.init` (`NSApp.appearance =`). `defaults write -app` doesn't reach a sandboxed
+    /// UI-test process, so this is the one plumbing path the dark-mode e2e smoke test and the
+    /// screenshot-inspection helpers have to force a specific appearance deterministically. `nil`
+    /// (any normal production launch, and any test that omits the flag) defers to the system/user
+    /// appearance, unchanged.
+    let appearance: String?
 
     /// Configuration for the running process.
     static let current = AppLaunchConfig()
@@ -18,6 +25,7 @@ struct AppLaunchConfig {
         reset = arguments.contains("--reset")
         fixture = AppLaunchConfig.value(after: "--fixture", in: arguments)
         storeName = AppLaunchConfig.value(after: "--store-name", in: arguments) ?? "default"
+        appearance = AppLaunchConfig.value(after: "--appearance", in: arguments)
     }
 
     /// Returns the argument immediately following `flag`, or nil if absent / trailing.
@@ -33,6 +41,7 @@ extension AppLaunchConfig {
     static var reset: Bool { current.reset }
     static var fixture: String? { current.fixture }
     static var storeName: String { current.storeName }
+    static var appearance: String? { current.appearance }
 
     /// UserDefaults key backing `RootView`'s persisted `selectedBoardID`. Namespaced by
     /// `storeName` under `--uitest` so distinct on-disk stores (each UI test launches its own,

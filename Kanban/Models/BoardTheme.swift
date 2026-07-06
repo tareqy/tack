@@ -37,9 +37,20 @@ enum BoardTheme: String, CaseIterable, Codable {
     /// surface without fighting legibility), which would make a swatch preview read as blank; this
     /// gives each preset a legible, clickable dot instead. `.default` renders as a neutral gray dot
     /// rather than fully invisible.
+    ///
+    /// M10 dark-mode audit: `.default` was `Color.gray.opacity(0.3)` — a TRANSLUCENT wash, unlike
+    /// every other case here, contradicting this property's own "fully-opaque" contract above. Being
+    /// translucent meant it visually blended with whatever sat behind it (the popover's own
+    /// light/dark-adaptive background), so its APPARENT color flipped from pale gray in light mode
+    /// to near-black in dark mode — measured (via a real screenshot pixel sample) at contrast ratios
+    /// of only 1.84:1 (light) / 2.87:1 (dark) against `ThemeButton`'s white "selected" checkmark,
+    /// both well under WCAG's 3:1 minimum for graphical UI components. `Color(white: 0.78)` is a
+    /// literal (non-dynamic) grayscale value — genuinely opaque and appearance-INDEPENDENT like the
+    /// other five presets — which is what makes the checkmark fix below (switching to a single fixed
+    /// black, rather than needing a per-appearance branch) correct for every swatch uniformly.
     var swatchColor: Color {
         switch self {
-        case .default: Color.gray.opacity(0.3)
+        case .default: Color(white: 0.78)
         case .ocean: .blue
         case .forest: .green
         case .sunset: .orange

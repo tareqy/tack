@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 @main
 struct KanbanApp: App {
@@ -18,6 +19,7 @@ struct KanbanApp: App {
     init() {
         let config = AppLaunchConfig.current
         self.config = config
+        Self.applyAppearanceOverride(config.appearance)
 
         if config.isUITest {
             // Test-store failures are a test-harness bug, not a user-facing condition — keep the
@@ -76,6 +78,31 @@ struct KanbanApp: App {
         // The menu-bar command layer (M7). Attached at the WindowGroup scene level — the M3 trap is
         // that commands/toolbars contributed from inside the split view never register.
         .commands { AppCommands() }
+    }
+
+    /// M10 test-only hook: forces the app's whole appearance from `AppLaunchConfig.appearance`
+    /// (`--appearance light|dark`) via `NSApplication.shared.appearance`, which — unlike a
+    /// `.preferredColorScheme` view modifier — affects window chrome and every view in the
+    /// hierarchy uniformly, matching what a real user's System Settings appearance toggle does.
+    /// `defaults write -app` cannot reach a sandboxed `--uitest` process, so this is the
+    /// deterministic substitute the dark-mode e2e smoke test and the screenshot-inspection helpers
+    /// rely on. Unrecognized/absent values (every normal production launch) leave the system/user
+    /// appearance untouched.
+    ///
+    /// Deliberately `NSApplication.shared`, NOT the bare `NSApp` global: this runs from
+    /// `KanbanApp.init()`, which — under SwiftUI's `App` lifecycle on macOS — executes BEFORE
+    /// `NSApplicationMain`-equivalent bootstrapping has populated `NSApp` (an implicitly-unwrapped
+    /// global that is still nil at this point). Force-unwrapping it here crashed on every launch
+    /// (`EXC_BREAKPOINT` in `applyAppearanceOverride`, reproduced via the screenshot-inspection e2e
+    /// helper — see the task-12 report). `NSApplication.shared` is the lazily-initializing
+    /// accessor ("creating it if it doesn't exist yet", per Apple's docs) and is safe at this
+    /// point.
+    private static func applyAppearanceOverride(_ raw: String?) {
+        switch raw {
+        case "light": NSApplication.shared.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
     }
 
     @ViewBuilder

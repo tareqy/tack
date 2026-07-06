@@ -22,9 +22,12 @@ class KanbanUITestCase: XCTestCase {
 
     /// Launches the app against an on-disk UI-test store seeded with `fixture`. `reset: true`
     /// (the default) wipes the store first for a clean start; the store name defaults to a
-    /// sanitized form of the test's name so tests don't collide on disk.
+    /// sanitized form of the test's name so tests don't collide on disk. `appearance` (M10, e.g.
+    /// "dark") is passed straight through as `--appearance <value>`, the test-only override
+    /// `AppLaunchConfig`/`KanbanApp` reads to force `NSApp.appearance` — omitted (nil, the default)
+    /// for every pre-M10 call site, which is unaffected.
     @discardableResult
-    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil) -> XCUIApplication {
+    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil, appearance: String? = nil) -> XCUIApplication {
         let resolvedStore = storeName ?? Self.sanitized(name)
         currentFixture = fixture
         currentStoreName = resolvedStore
@@ -32,6 +35,9 @@ class KanbanUITestCase: XCTestCase {
         let launched = XCUIApplication()
         var args = ["--uitest", "--fixture", fixture, "--store-name", resolvedStore]
         if reset { args.append("--reset") }
+        if let appearance {
+            args.append(contentsOf: ["--appearance", appearance])
+        }
         launched.launchArguments = args
         launched.launch()
         app = launched

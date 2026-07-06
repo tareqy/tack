@@ -74,9 +74,15 @@ struct ThemeButton: View {
                     .overlay(Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1))
                     .overlay {
                         if selected {
+                            // M10 dark-mode audit: was `.white`, measured (via screenshot pixel
+                            // sampling) at contrast ratios as low as 1.84:1 against several swatch
+                            // fills — see `BoardTheme.swatchColor`'s doc comment for the full
+                            // measurement. `.black` passes WCAG's 3:1 graphical-object minimum
+                            // against all 6 swatches in both appearances (every swatch is now a
+                            // fully opaque, appearance-independent color).
                             Image(systemName: "checkmark")
                                 .font(.caption.bold())
-                                .foregroundStyle(.white)
+                                .foregroundStyle(.black)
                         }
                     }
                 Text(theme.displayName)

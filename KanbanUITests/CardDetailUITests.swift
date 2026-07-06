@@ -124,6 +124,12 @@ final class CardDetailUITests: KanbanUITestCase {
                       "after removing red, dots value should be yellow only")
     }
 
+    /// M10 (D-03): extended in place — per the task-12 brief — to the new "<iso>|<status>" a11y
+    /// value format (was a bare ISO date), keeping the SAME assertion strength (still one exact
+    /// `XCTAssertEqual` against a fully-computed expected string, just a longer one). This also
+    /// covers the brief's "badge updates when due date changes" scenario end to end (set Tomorrow →
+    /// Save → badge shows `|tomorrow`; Clear → Save → badge gone), so a separate duplicate test was
+    /// not added.
     func testDueDateQuickOptionAndClear() {
         launch(fixture: "standard")
 
@@ -136,16 +142,18 @@ final class CardDetailUITests: KanbanUITestCase {
         hittableButton("Save").click()
         XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
 
-        // Badge value is a LOCAL full-date ISO string of tomorrow (see DueDateBadge's formatter).
+        // Badge value is a LOCAL full-date ISO string of tomorrow, plus the "|tomorrow" urgency
+        // suffix M10 adds (see DueDateBadge's formatter + `DueDateBadgeStyle`/`wireValue`).
         let calendar = Calendar.current
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date()))!
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
         formatter.timeZone = .current
-        let expectedISO = formatter.string(from: tomorrow)
+        let expectedValue = "\(formatter.string(from: tomorrow))|tomorrow"
 
         XCTAssertTrue(poll(timeout: timeout) { badge.exists }, "badge should appear after Save")
-        XCTAssertEqual(badge.value as? String, expectedISO, "badge value should be tomorrow's ISO date")
+        XCTAssertEqual(badge.value as? String, expectedValue,
+                       "badge value should be tomorrow's ISO date plus the |tomorrow urgency suffix")
 
         // Reopen → Clear → Save → badge gone.
         openDetailViaBodyDoubleClick("Book flights")
