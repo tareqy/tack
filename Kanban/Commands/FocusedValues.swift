@@ -13,6 +13,11 @@ struct BoardActions {
     /// Opens the inline add-card editor on the focused list (list of the selected card), else the
     /// first list of the active board.
     let newCard: () -> Void
+    /// Whether ⌘N / File ▸ "New Card" currently has anywhere to open its inline editor — false
+    /// when every list on the active board is collapsed (`NewCardTarget.resolve(...) == nil`, see
+    /// that type's doc comment). Drives the New Card menu item's `.disabled(...)` alongside the
+    /// existing `boardActions == nil` gate.
+    let canCreateCard: Bool
     /// Opens the inline add-list editor (ghost column) on the active board.
     let newList: () -> Void
     /// Deletes the selected card with no dialog (undoable). No-op when nothing is selected.

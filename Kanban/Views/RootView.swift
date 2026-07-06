@@ -27,7 +27,9 @@ struct RootView: View {
 
     init(config: AppLaunchConfig) {
         _selectedBoardIDRaw = AppStorage(config.selectedBoardDefaultsKey)
-        exportToFilename = config.exportTo
+        // Test-only affordance — honored ONLY under --uitest (mirrors how --appearance is gated
+        // in KanbanApp.init), so a normal launch can never be made to write an export file.
+        exportToFilename = config.isUITest ? config.exportTo : nil
     }
 
     var body: some View {

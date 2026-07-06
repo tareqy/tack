@@ -22,7 +22,7 @@ struct AppCommands: Commands {
         CommandGroup(before: .newItem) {
             Button("New Card") { boardActions?.newCard() }
                 .keyboardShortcut("n", modifiers: .command)
-                .disabled(boardActions == nil)
+                .disabled(boardActions == nil || boardActions?.canCreateCard == false)
 
             Button("New List") { boardActions?.newList() }
                 .keyboardShortcut("n", modifiers: [.command, .option])

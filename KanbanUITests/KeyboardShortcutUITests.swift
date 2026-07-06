@@ -79,6 +79,37 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
         closeMenu()
     }
 
+    /// Pre-ship fix: File ▸ New Card must be DISABLED once every list on the active board is
+    /// collapsed — there is no visible list left for the inline editor to open on.
+    /// `NewCardTarget.resolve` already returned nil for this case (see its own tests); this wires
+    /// that nil through to the menu item's actual enablement via `BoardActions.canCreateCard`
+    /// (see `AppCommands`'s New Card `.disabled(...)`), which previously left ⌘N enabled-and-no-op
+    /// on an all-collapsed board.
+    func testNewCardDisabledWhenAllListsCollapsed() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        // Work (⌘2) is the standard fixture's second, otherwise-empty board — still seeded with
+        // the default 3 lists (To Do / In Progress / Done) by `BoardStore.createBoard`.
+        app.typeKey("2", modifierFlags: .command)
+        XCTAssertTrue(poll(timeout: timeout) { self.combinedText(self.boardDetail).contains("Work") },
+                      "⌘2 should switch to the Work board")
+
+        for name in ["To Do", "In Progress", "Done"] {
+            let chevron = collapseButton(name)
+            XCTAssertTrue(chevron.waitForExistence(timeout: timeout), "\(name) collapse chevron should exist")
+            chevron.click()
+            XCTAssertTrue(poll(timeout: timeout) { self.collapseState(name) == "collapsed" },
+                          "\(name) should collapse")
+        }
+
+        openMenu("File")
+        XCTAssertTrue(menuItem("New Card").waitForExistence(timeout: timeout))
+        XCTAssertFalse(menuItem("New Card").isEnabled,
+                       "New Card should be disabled once every list on the board is collapsed")
+        closeMenu()
+    }
+
     func testSidebarToggleMenuItemExists() {
         launch(fixture: "standard")
         XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
@@ -453,6 +484,11 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
     /// marker (mirrors CollapseUITests).
     private func collapseState(_ name: String) -> String? {
         app.descendants(matching: .any)[AccessibilityID.listCollapseState(name)].value as? String
+    }
+
+    /// The collapse-toggle chevron for a list (mirrors CollapseUITests).
+    private func collapseButton(_ name: String) -> XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.collapseListButton(name)]
     }
 
     private func expected(_ titles: String...) -> [String] {

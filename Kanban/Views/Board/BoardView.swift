@@ -205,6 +205,7 @@ struct BoardView: View {
         BoardActions(
             selectedCard: selectedCard,
             newCard: openNewCardEditor,
+            canCreateCard: NewCardTarget.resolve(selectedCardID: selectedCardID, board: snapshot) != nil,
             newList: openNewListEditor,
             deleteSelectedCard: deleteSelectedCard,
             openSelectedCard: openSelectedCard,

@@ -95,7 +95,12 @@ enum SelectionNavigation {
     /// Where the selected CARD should be moved for a ⌘-arrow keypress (Card ▸ Move Card …).
     /// Returns `(listIndex, insertIndex)` for `store.moveCard(_, to: lists[listIndex], at: insertIndex)`.
     /// `listIndex` indexes the FULL `board.sortedLists` (the snapshot keeps every list, including
-    /// collapsed ones, so the returned index maps straight back at the call site).
+    /// collapsed ones, so the returned index maps straight back at the call site). With a label
+    /// filter active, `insertIndex` is computed from the VISIBLE-snapshot `cardIDs` but is then
+    /// applied by `store.moveCard` against the FULL, unfiltered destination array, so a moved card
+    /// can land between filtered-out (hidden) cards — deterministic and clamped, the same accepted
+    /// consequence already documented at `ListColumnView.cardList`'s M11 drop-math note for
+    /// mouse-drag drops.
     ///
     /// - up/down: swap within the current list (target = neighbour's index). At the top edge for
     ///   up, or the bottom edge for down, returns nil (clamped — the move is a no-op).
