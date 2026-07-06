@@ -68,4 +68,21 @@ enum AccessibilityID {
     /// value is the board's emoji+name text (see `BoardView.header`), so folding the theme into it
     /// would clobber the existing regression assertions that check for the board's name there.
     static let boardThemeValue = "board-theme-value"
+
+    // MARK: - M9: list collapse/expand
+
+    /// The collapse-toggle chevron: the (expanded) header's "collapse" button AND the (collapsed)
+    /// pill's "expand" button share this ONE identifier — exactly one of the two exists at a time
+    /// (mutually exclusive branches in `ListColumnView.body`), so there is no collision, and callers
+    /// address "the chevron for this list" uniformly regardless of state.
+    static func collapseListButton(_ name: String) -> String { "collapse-list-\(name)" }
+
+    /// Detached marker (the `boardThemeValue` / `cardLabels` pattern) exposing a column's collapse
+    /// state as `accessibilityValue`: "collapsed" or "expanded". Kept SEPARATE from the `list(_:)`
+    /// container itself for the same reason M8 kept `boardThemeValue` separate from `boardDetail`:
+    /// a plain `.accessibilityValue` on a SwiftUI `.contain` container is empty under XCUITest on
+    /// macOS (verified again in M9's first UI run), whereas an `.accessibilityRepresentation` `Text`
+    /// reliably surfaces its value. The `list(_:)` container keeps its own `.accessibilityValue` for
+    /// real VoiceOver; tests read the machine-readable state off this marker.
+    static func listCollapseState(_ name: String) -> String { "list-state-\(name)" }
 }

@@ -39,13 +39,55 @@ struct ListColumnView: View {
     /// Same fixed row height as the M2 spike, so its DropMath reasoning carries over unchanged.
     private let rowHeight: CGFloat = 44
 
+    /// Width of the collapsed pill (M9). Narrow enough that `testCollapseExpandRoundTrip`'s
+    /// `frame.width < 100` assertion holds with margin, yet wide enough for the chevron + count
+    /// badge + rotated name. The pill's list-reorder routing uses THIS width for its DropMath
+    /// midline (not `columnWidth`) so a drop on its left/right half still resolves before/after
+    /// correctly at pill scale.
+    private let collapsedWidth: CGFloat = 44
+
     @State private var isPresentingDeleteConfirm = false
     @State private var isAddingCard = false
     @State private var newCardDraft = ""
     @FocusState private var isAddCardFocused: Bool
     @State private var isFooterTargeted = false
+    @State private var isPillTargeted = false
 
+    // M9: a column renders as either the full expanded column or a narrow collapsed pill, per
+    // `list.isCollapsed`. BOTH branches carry the SAME `.contain` container id
+    // (`AccessibilityID.list(name)`) so tests address a column uniformly either way, and each also
+    // sets its own `.accessibilityValue` for real VoiceOver. Because a `.contain` container's value
+    // is empty under XCUITest, the machine-readable collapse state is ALSO published through a
+    // detached `.accessibilityRepresentation` marker overlay (the proven `boardThemeValue`
+    // pattern), which tests read. The expanded branch is the FROZEN M4→M5 drop architecture,
+    // unchanged except for an additive header collapse chevron and the accessibilityValue.
     var body: some View {
+        Group {
+            if list.isCollapsed {
+                collapsedPill
+            } else {
+                expandedColumn
+            }
+        }
+        .overlay(alignment: .topLeading) { collapseStateMarker }
+    }
+
+    /// Zero-sized, non-hit-testing marker whose `.accessibilityRepresentation` `Text` reliably
+    /// surfaces the collapse state as a value under XCUITest — the same shape as
+    /// `BoardView.themeValueMarker`. Read via `AccessibilityID.listCollapseState(name)`.
+    private var collapseStateMarker: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityRepresentation {
+                Text(list.isCollapsed ? "collapsed" : "expanded")
+                    .accessibilityIdentifier(AccessibilityID.listCollapseState(list.name))
+            }
+    }
+
+    // MARK: - Expanded column (frozen M4→M5 drop architecture)
+
+    private var expandedColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
             Divider()
@@ -69,6 +111,7 @@ struct ListColumnView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.list(list.name))
+        .accessibilityValue("expanded")
         // COEXISTENCE (empirically established — see the type doc for the full story): the column
         // CONTAINER owns ONLY this list-reorder destination, catching list drops on the header and
         // column edges. Do NOT stack a CardTransfer destination here (the first-applied modifier
@@ -93,7 +136,79 @@ struct ListColumnView: View {
         }
     }
 
-    // MARK: - Header (drag source, rename, delete)
+    // MARK: - Collapsed pill (M9)
+
+    /// The narrow, full-height stand-in for a collapsed column: a chevron to expand, the live card
+    /// count, and the rotated list name. Clicking anywhere on the pill (or the chevron) expands it.
+    /// It stays a valid drop target via ONE dual-import `ColumnDropPayload` destination — the SAME
+    /// frozen pattern the expanded footer uses: card drops append to this list, list drops route
+    /// through the shared reorder `handleDrop` (at pill width, so its before/after midline is
+    /// correct). No typed stacked destinations — that shape was disproven in M5.
+    private var collapsedPill: some View {
+        VStack(spacing: 10) {
+            Button(action: expand) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(AccessibilityID.collapseListButton(list.name))
+            .accessibilityLabel("Expand \(list.name)")
+
+            Text("\(list.cards.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.secondary.opacity(0.2), in: Capsule())
+                .accessibilityIdentifier(AccessibilityID.listCardCount(list.name))
+
+            // Rotated name. `fixedSize` gives it its ideal (unwrapped) size in layout; the -90°
+            // rotation is a render-only transform, so the name's horizontal layout claim overflows
+            // the fixed 44pt pill width harmlessly and draws as vertical text. Marked AX-hidden —
+            // the name is already carried by the container's identifier, and hiding it keeps the
+            // overflowing layout box out of the container's AX frame so the pill measures at its
+            // true ~44pt width.
+            Text(list.name)
+                .font(.headline)
+                .lineLimit(1)
+                .fixedSize()
+                .rotationEffect(.degrees(-90))
+                .frame(maxHeight: .infinity)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 8)
+        .frame(width: collapsedWidth, alignment: .top)
+        .frame(maxHeight: .infinity)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .opacity(isPillTargeted ? 1 : 0)
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture(perform: expand)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(AccessibilityID.list(list.name))
+        .accessibilityValue("collapsed")
+        // ONE dual-import destination, mirroring the expanded footer exactly: cards append here,
+        // list drags forward to the same reorder routing — computed at the pill's own width so the
+        // before/after midline lands at the pill's centre, not `columnWidth`'s.
+        .dropDestination(for: ColumnDropPayload.self) { items, location in
+            guard let payload = items.first else { return false }
+            switch payload {
+            case .card(let transfer):
+                return appendCard(transfer)
+            case .list(let transfer):
+                return handleDrop(transfer: transfer, location: location, width: collapsedWidth)
+            }
+        } isTargeted: { isPillTargeted = $0 }
+    }
+
+    // MARK: - Header (drag source, rename, delete, collapse)
 
     private var header: some View {
         HStack(spacing: 8) {
@@ -113,6 +228,19 @@ struct ListColumnView: View {
                 .padding(.vertical, 2)
                 .background(Color.secondary.opacity(0.2), in: Capsule())
                 .accessibilityIdentifier(AccessibilityID.listCardCount(list.name))
+            // Collapse chevron — placed TRAILING so it never overlaps the leading rename/drag
+            // regions: the name owns double-click-rename, the header body owns the list drag. A
+            // Button captures its own click, so tapping the chevron collapses without starting a
+            // drag or a rename.
+            Button(action: collapse) {
+                Image(systemName: "chevron.left")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(AccessibilityID.collapseListButton(list.name))
+            .accessibilityLabel("Collapse \(list.name)")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -257,15 +385,23 @@ struct ListColumnView: View {
         board.sortedLists.flatMap { $0.sortedCards }.first { $0.id == id }
     }
 
+    // MARK: - Collapse / expand (M9)
+
+    private func collapse() { store.setCollapsed(list, true) }
+    private func expand() { store.setCollapsed(list, false) }
+
     // MARK: - Drop routing
 
-    private func handleDrop(transfer: ListTransfer, location: CGPoint) -> Bool {
+    /// `width` defaults to this column's `columnWidth` (the expanded container's + footer's callers
+    /// pass nothing); the collapsed pill overrides it with its own narrow width so the before/after
+    /// midline is computed at the pill's scale, not the full column's.
+    private func handleDrop(transfer: ListTransfer, location: CGPoint, width: CGFloat? = nil) -> Bool {
         setTargeted(false)
         guard let movingList = board.sortedLists.first(where: { $0.id == transfer.listID }) else { return false }
         let siblings = board.sortedLists
         guard let rowIndex = siblings.firstIndex(where: { $0.id == list.id }) else { return false }
         let fromIndex = siblings.firstIndex(where: { $0.id == movingList.id })
-        let edge = DropMath.insertionEdge(locationX: location.x, columnWidth: columnWidth)
+        let edge = DropMath.insertionEdge(locationX: location.x, columnWidth: width ?? columnWidth)
         let index = DropMath.destinationIndex(rowIndex: rowIndex, edge: edge, movingFromIndexInSameList: fromIndex)
         store.moveList(movingList, to: index)
         return true

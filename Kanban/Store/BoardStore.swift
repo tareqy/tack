@@ -182,6 +182,16 @@ final class BoardStore {
         }
     }
 
+    /// Toggles a list's collapsed display state (M9): one undo step, named for the direction
+    /// ("Collapse List" / "Expand List"). Purely a display flag on the list itself — touches
+    /// neither its own position nor any sibling's, so collapsing/expanding never reshuffles order.
+    func setCollapsed(_ list: BoardList, _ collapsed: Bool) {
+        withUndoGroup(collapsed ? "Collapse List" : "Expand List") {
+            list.isCollapsed = collapsed
+            save()
+        }
+    }
+
     // MARK: - Cards
 
     @discardableResult

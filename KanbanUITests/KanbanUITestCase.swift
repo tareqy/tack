@@ -172,12 +172,32 @@ class KanbanUITestCase: XCTestCase {
     /// of its `card-<title>` row and also begins with "card-", so without the exclusion every
     /// labeled row would be counted twice — the same shadowing trap the `cardtitle-` prefix comment
     /// in `AccessibilityID` documents.
+    ///
+    /// Reads via ONE atomic `container.snapshot()` rather than a live `descendants(...).matching(...)
+    /// .allElementsBoundByIndex` query. That live form re-resolves the accessibility tree ONCE PER
+    /// MATCHED ELEMENT (confirmed against a real run: "Get all elements bound by index" followed by
+    /// a separate "Find the ... (Element at index N)" round trip for each card, spanning multiple
+    /// seconds) — during a drop mutation, the list it's walking is actively being torn down and
+    /// rebuilt by SwiftUI in that same window, so a later per-element round trip can land after the
+    /// element it already found has been replaced, escalating through XCTest's internal retries into
+    /// a HARD "Failed to get matching snapshot" failure that aborts the test outright (reproduced
+    /// 100% of the time on `testDropOnCollapsedListAppends`'s post-drop read of "To Do", not a rare
+    /// flake). `.snapshot()` instead captures the WHOLE subtree in one shot; every identifier/frame
+    /// read below is then plain in-memory traversal of that already-fetched, internally-consistent
+    /// tree, so there is nothing left to race against. It also THROWS (unlike the live query, which
+    /// fails hard with no catchable error), so a container that vanishes between the `exists` guard
+    /// and the snapshot call degrades to an ordinary `[]` "not yet" for the caller's poll loop
+    /// instead of a test-ending failure.
     func cardIdentifiersByPosition(under container: XCUIElement) -> [String] {
-        let cards = container.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT identifier BEGINSWITH %@",
-                                  "card-", "card-labels-"))
-            .allElementsBoundByIndex
+        guard container.exists, let snapshot = try? container.snapshot() else { return [] }
+        let cards = allDescendants(of: snapshot).filter {
+            $0.identifier.hasPrefix("card-") && !$0.identifier.hasPrefix("card-labels-")
+        }
         return cards.sorted { $0.frame.minY < $1.frame.minY }.map(\.identifier)
+    }
+
+    private func allDescendants(of snapshot: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+        snapshot.children.flatMap { [$0] + allDescendants(of: $0) }
     }
 
     // MARK: - Helpers
