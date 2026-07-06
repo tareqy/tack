@@ -25,6 +25,7 @@ struct RenameBoardSheet: View {
 
             TextField("Board name", text: $name)
                 .textFieldStyle(.roundedBorder)
+                .reportsTextInputFocus()
                 .accessibilityIdentifier(AccessibilityID.renameBoardField)
 
             HStack {

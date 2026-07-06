@@ -12,6 +12,7 @@ import AppKit
 struct AppCommands: Commands {
     @FocusedValue(\.boardActions) private var boardActions
     @FocusedValue(\.boardSelectionActions) private var boardSelection
+    @FocusedValue(\.textInputFocused) private var textInputFocused
 
     var body: some Commands {
         // MARK: File — placed BEFORE the system "New … Window" item so ⌘N resolves to New Card
@@ -36,30 +37,30 @@ struct AppCommands: Commands {
 
         // MARK: Edit — Delete Card (no dialog, undoable). System Undo/Redo are left untouched.
         CommandGroup(after: .pasteboard) {
-            Button("Delete Card") { boardActions?.deleteSelectedCard() }
+            Button("Delete Card") { guardedMutation { boardActions?.deleteSelectedCard() } }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(boardActions?.selectedCard == nil)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
         }
 
         // MARK: Card — move the selected card with ⌘-arrows.
         CommandMenu("Card") {
-            Button("Move Card Up") { boardActions?.moveSelectedCard(.up) }
+            Button("Move Card Up") { guardedMutation { boardActions?.moveSelectedCard(.up) } }
                 .keyboardShortcut(.upArrow, modifiers: .command)
-                .disabled(boardActions?.selectedCard == nil)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
 
-            Button("Move Card Down") { boardActions?.moveSelectedCard(.down) }
+            Button("Move Card Down") { guardedMutation { boardActions?.moveSelectedCard(.down) } }
                 .keyboardShortcut(.downArrow, modifiers: .command)
-                .disabled(boardActions?.selectedCard == nil)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
 
             Divider()
 
-            Button("Move Card Left") { boardActions?.moveSelectedCard(.left) }
+            Button("Move Card Left") { guardedMutation { boardActions?.moveSelectedCard(.left) } }
                 .keyboardShortcut(.leftArrow, modifiers: .command)
-                .disabled(!(boardActions?.canMoveSelectedCard(.left) ?? false))
+                .disabled(!(boardActions?.canMoveSelectedCard(.left) ?? false) || isTextInputActive)
 
-            Button("Move Card Right") { boardActions?.moveSelectedCard(.right) }
+            Button("Move Card Right") { guardedMutation { boardActions?.moveSelectedCard(.right) } }
                 .keyboardShortcut(.rightArrow, modifiers: .command)
-                .disabled(!(boardActions?.canMoveSelectedCard(.right) ?? false))
+                .disabled(!(boardActions?.canMoveSelectedCard(.right) ?? false) || isTextInputActive)
         }
 
         // MARK: View — sidebar toggle + selection navigation (bare arrows) + board switching
@@ -74,13 +75,16 @@ struct AppCommands: Commands {
 
             Divider()
 
-            Button("Select Previous Card") { boardActions?.moveSelection(.up) }
+            // Bare arrows are gated on the text-input guard too (same hole family as ⌘⌫): while an
+            // inline editor is focused, an enabled item would swallow ↑/↓ typed in the field, and
+            // disabling it instead lets the key fall through to the text caret.
+            Button("Select Previous Card") { guardedMutation { boardActions?.moveSelection(.up) } }
                 .keyboardShortcut(.upArrow, modifiers: [])
-                .disabled(boardActions?.selectedCard == nil)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
 
-            Button("Select Next Card") { boardActions?.moveSelection(.down) }
+            Button("Select Next Card") { guardedMutation { boardActions?.moveSelection(.down) } }
                 .keyboardShortcut(.downArrow, modifiers: [])
-                .disabled(boardActions?.selectedCard == nil)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
 
             Divider()
 
@@ -96,5 +100,40 @@ struct AppCommands: Commands {
         let names = boardSelection?.boardNames ?? []
         if position <= names.count { return "\(position)  \(names[position - 1])" }
         return "Board \(position)"
+    }
+
+    // MARK: - Text-input guard
+
+    /// True while any tagged text-input view holds keyboard focus (see
+    /// `FocusedValues.textInputFocused` / `reportsTextInputFocus()` — applied to every
+    /// TextField/TextEditor in the app: inline add-card/add-list/rename editors, the board sheets'
+    /// fields, the sidebar filter, the card-detail fields). Gating the mutating card commands on
+    /// this means ⌘⌫ / ⌘-arrows can never mutate the card behind an open editor while the user is
+    /// typing — macOS matches menu key-equivalents BEFORE the key window's responder chain, so
+    /// without it an enabled ⌘⌫ deletes the selected card behind the field's back.
+    ///
+    /// Chosen over the classic responder-chain check (`firstResponder is NSTextView`) on EVIDENCE:
+    /// on this macOS/SwiftUI version the first responder is a private `SwiftUI.KeyViewProxy` — not
+    /// an `NSTextView`, not an `NSTextInputClient`, with a nil `inputContext` — and it is the first
+    /// responder EVEN WHEN NO EDITOR IS OPEN, so no responder-chain predicate can discriminate a
+    /// typing context (verified via responder dumps from inside the running app under --uitest).
+    /// A focused value is also the change signal SwiftUI Commands reliably re-evaluate enablement
+    /// on, which raw responder changes are not.
+    private var isTextInputActive: Bool {
+        textInputFocused == true
+    }
+
+    /// Belt-and-suspenders with the `.disabled(... || isTextInputActive)` gate: menu enablement is
+    /// only as fresh as the last Commands re-evaluation, so the flag could in principle be stale at
+    /// the instant a key-equivalent is matched. Re-checking inside the action guarantees the
+    /// mutation can never fire from a typing context. The additional `keyWindow.isSheet` check
+    /// covers a sheet that is open WITHOUT any of its fields focused (e.g. CreateBoardSheet just
+    /// presented): key equivalents still match app menus while a sheet is key, and a card mutation
+    /// behind a modal sheet is never right. It lives here (not in `.disabled`) deliberately —
+    /// AppKit window state is not a signal SwiftUI re-evaluates Commands on, and a stale DISABLED
+    /// item after sheet dismissal would be a worse failure mode than a no-op action.
+    private func guardedMutation(_ mutation: () -> Void) {
+        guard !isTextInputActive, NSApp.keyWindow?.isSheet != true else { return }
+        mutation()
     }
 }

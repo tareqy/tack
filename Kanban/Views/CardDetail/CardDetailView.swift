@@ -41,6 +41,7 @@ struct CardDetailView: View {
                     TextField("Title", text: $title)
                         .textFieldStyle(.plain)
                         .font(.title2)
+                        .reportsTextInputFocus()
                         .accessibilityIdentifier(AccessibilityID.cardDetailTitleField)
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -49,6 +50,7 @@ struct CardDetailView: View {
                             .foregroundStyle(.secondary)
                         TextEditor(text: $details)
                             .font(.body)
+                            .reportsTextInputFocus()
                             .frame(minHeight: 120)
                             .padding(4)
                             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))

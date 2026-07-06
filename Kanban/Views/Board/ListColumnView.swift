@@ -157,6 +157,7 @@ struct ListColumnView: View {
             TextField("Card title", text: $newCardDraft)
                 .textFieldStyle(.plain)
                 .focused($isAddCardFocused)
+                .reportsTextInputFocus()
                 .onSubmit(commitNewCard)
                 .onExitCommand(perform: cancelNewCard)
                 .onAppear { isAddCardFocused = true }

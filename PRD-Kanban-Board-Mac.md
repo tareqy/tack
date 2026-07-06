@@ -18,7 +18,7 @@ This revision incorporates a verified multi-reviewer PRD review plus user-locked
 - **Pulled JSON export (E-01) and urgency color-coding (D-03) into MVP**; added **Undo/Redo (U-01)** as a first-class P0 feature, and added keyboard-only card navigation/movement (C-10, C-11) as P0.
 - **Rewrote §1** to describe the MVP honestly; demoted Spotlight search and Apple Reminders sync to an explicit roadmap sentence instead of headline promises.
 - **Rewrote A-04:** drag-and-drop uses SwiftUI `.draggable`/`.dropDestination` with `Transferable` payloads (not `DragGesture`/`NSDraggingSource`); added a de-risking spike and a context-menu fallback.
-- **Card delete is now undo-based** (⌘⌫, no confirmation dialog, Finder pattern); board/list deletes keep their confirmation dialogs and are also undoable.
+- **Card delete is now undo-based** (⌘⌫, no confirmation dialog, Finder pattern); board/list deletes keep their confirmation dialogs. List deletes are also undoable; board deletes are confirmation-only — not undoable (SwiftData platform limitation, see §4.7).
 - **Replaced the keyboard shortcuts table**; dropped the bare `+` shortcut (conflicted with typing).
 - **Declared dark mode an MVP baseline** (SwiftUI makes it near-free); only custom-theme contrast polish remains P1.
 - **Replaced D-04's placeholder API** (`remindctl`/`eventkitd`) with the real EventKit framework (`EKReminder`, `NSRemindersUsageDescription`); still P2/roadmap.
@@ -93,7 +93,7 @@ Boards are the top-level container — a visual workspace for organizing work in
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
 | B-01 | Create board with name + icon/emoji | P0 | Default: 3 empty lists ("To Do", "In Progress", "Done") |
-| B-02 | Rename / delete boards | P0 | Delete requires confirmation (cards may exist); undoable via ⌘Z (see §4.7, U-01) |
+| B-02 | Rename / delete boards | P0 | Delete requires confirmation (cards may exist) and is **not undoable** — a SwiftData platform limitation (undo snapshotting of an on-disk Board delete fatally asserts), so board delete relies on the confirmation dialog alone (see §4.7, U-01). Rename and all other board mutations remain undoable via ⌘Z |
 | B-03 | Board sidebar listing — collapsible, searchable | P0 | Sidebar persists across app restarts. If no boards exist (first launch), shows an empty-state onboarding view (see A-02, §8) instead of an empty list |
 | B-04 | Board background themes/colors | P1 | 6 preset palettes + custom hex picker; baseline light/dark adaptation is automatic via SwiftUI — contrast auditing for *custom* themes is deferred (see §7) |
 | B-05 | Board cover image (unsplash integration) | P2 | Post-MVP if time permits |
@@ -221,11 +221,11 @@ Local-first storage without an export path is exactly the lock-in this app exist
 
 ### 4.7 Undo & Redo
 
-All mutating operations — create/rename/delete/move/reorder of boards, lists, and cards; label toggles; due-date edits — are undoable, backed by the standard `UndoManager` and exposed through the standard Edit menu and ⌘Z/⇧⌘Z.
+All mutating operations — create/rename/move/reorder of boards, lists, and cards; list and card deletes; label toggles; due-date edits — are undoable, backed by the standard `UndoManager` and exposed through the standard Edit menu and ⌘Z/⇧⌘Z. The sole exception is **board deletion**, which is confirmation-gated and not undoable (see U-01 and B-02); board *creation* undo is unaffected and works normally.
 
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
-| U-01 | Undo/redo for all mutations | P0 | `UndoManager`-backed (NSUndoManager); standard Edit menu items; ⌘Z / ⇧⌘Z. Session undo history holds at least 50 steps (see §10, N-04). Card delete (C-05) relies on this in place of a confirmation dialog |
+| U-01 | Undo/redo for all mutations | P0 | `UndoManager`-backed (NSUndoManager); standard Edit menu items; ⌘Z / ⇧⌘Z. Session undo history holds at least 50 steps (see §10, N-04). Card delete (C-05) relies on this in place of a confirmation dialog. **Board deletion is the one exception** — confirmation-gated and not undoable, because SwiftData's undo snapshotting of an on-disk Board delete fatally asserts (crash-forced platform limitation; see B-02 and §7 roadmap). All other board mutations, including board *creation*, remain undoable |
 
 **MVP Scope:** U-01
 
@@ -314,7 +314,7 @@ Sibling order — lists within a board, cards within a list — is a contiguous 
 | Card | Removes its Label associations (nullify); Labels are untouched |
 | Label | Removes the association from any Cards that had it (nullify); Cards are untouched |
 
-All of the above are undoable (see §4.7, U-01). Board and List deletes additionally require a confirmation dialog before the (undoable) delete is committed (see B-02, L-02). Card delete has no confirmation dialog — it relies on undo instead (see C-05).
+All of the above are undoable (see §4.7, U-01), **except board deletion**, which is confirmation-gated and not undoable (a SwiftData platform limitation — undo snapshotting of an on-disk Board delete fatally asserts). Board and List deletes both require a confirmation dialog before the delete is committed (see B-02, L-02); the List delete is undoable, the Board delete is not. Card delete has no confirmation dialog — it relies on undo instead (see C-05).
 
 ### 6.4 Schema Versioning
 
@@ -344,6 +344,7 @@ These are explicitly deferred beyond the MVP, with an indicative roadmap priorit
 | Search across all boards (Spotlight integration) | P2 | Useful, but deferred to roadmap (§1) |
 | Apple Reminders sync (EventKit) | P2 | Deferred to roadmap (§1); see D-04 |
 | Trello import (from Trello's JSON export) | P1 | Feasible from Trello's own data export format; table stakes for Trello refugees switching over |
+| Soft-delete/restore for boards (undo replacement) | P1 | Platform-forced deferral: board delete is currently confirmation-gated and not undoable because SwiftData's undo snapshotting of an on-disk Board delete fatally asserts (see B-02, U-01). A soft-delete + restore ("Recently Deleted") flow would give back reversibility without relying on `UndoManager` |
 
 ---
 
@@ -369,7 +370,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 ### 9.1 Boards
 
 - **B-01 — Create board.** Given the app is open (with or without existing boards), when the user creates a new board and supplies a name, then a new board appears in the sidebar with three default lists ("To Do", "In Progress", "Done") and zero cards, and it persists after relaunch.
-- **B-02 — Rename/delete board.** Given an existing board, when the user renames it, then the sidebar and any open views reflect the new name immediately and after relaunch. Given an existing board (with or without cards), when the user deletes it, then a confirmation dialog appears; when confirmed, the board and all its lists/cards are removed from the UI and the persisted store, and the deletion is undoable via ⌘Z.
+- **B-02 — Rename/delete board.** Given an existing board, when the user renames it, then the sidebar and any open views reflect the new name immediately and after relaunch. Given an existing board (with or without cards), when the user deletes it, then a confirmation dialog appears; when confirmed, the board and all its lists/cards are removed from the UI and the persisted store. The delete is **not undoable** (SwiftData platform limitation — see §4.7, U-01), so the confirmation dialog is the sole guard against accidental loss; the app must remain responsive after the delete.
 - **B-03 — Board sidebar.** Given at least one board exists, when the app launches, then the sidebar lists all boards in their saved order from the previous session. Given zero boards exist, when the app launches, then the empty-state onboarding view (A-02) is shown instead. Given the sidebar search field has focus, when the user types a substring of a board name, then only matching boards remain visible.
 
 ### 9.2 Lists
@@ -408,12 +409,12 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 
 ### 9.7 Undo/Redo
 
-- **U-01 — Undo/redo for all mutations.** Given any mutating action (create/rename/delete/move/reorder of a board, list, or card; label toggle; due-date edit), when the user presses ⌘Z, then that single action is fully reverted, including position/order; when the user then presses ⇧⌘Z, then the action is reapplied. This holds for at least 50 consecutive undoable actions in one session (see §10, N-04).
+- **U-01 — Undo/redo for all mutations.** Given any undoable mutating action (create/rename/move/reorder of a board, list, or card; list or card delete; label toggle; due-date edit), when the user presses ⌘Z, then that single action is fully reverted, including position/order; when the user then presses ⇧⌘Z, then the action is reapplied. This holds for at least 50 consecutive undoable actions in one session (see §10, N-04). **Board deletion is excluded** — it is confirmation-gated and not undoable (SwiftData platform limitation); undoing a board *creation* is supported and, after it, the app remains responsive.
 
 ### 9.8 Testing Strategy & Definition of Done
 
 - **Unit tests (Swift Testing)** cover model/store logic in isolation: position/ordering invariants (contiguous `0..<n`, correct renumbering on insert/move/delete) for lists and cards; cascade-delete behavior (Board→BoardList→Card, Label nullify-on-delete in both directions); due-date normalization (`includesTime == false` → start-of-day) and urgency color derivation (D-03); idempotent label-palette seeding (LB-01); and undo/redo stack behavior (U-01), including redo-after-undo and history depth ≥ 50.
-- **XCUITest end-to-end tests** drive the full app for: board/list/card CRUD journeys; drag-and-drop (list reorder, card reorder, card move-between-lists); every shortcut in the §4.3 Keyboard Shortcuts table plus keyboard navigation (C-10/C-11); relaunch-persistence (perform mutations, terminate, relaunch, assert state matches); JSON export producing a well-formed, re-importable file; and delete-then-undo flows (card no-confirmation/undo, board/list confirm-then-undo).
+- **XCUITest end-to-end tests** drive the full app for: board/list/card CRUD journeys; drag-and-drop (list reorder, card reorder, card move-between-lists); every shortcut in the §4.3 Keyboard Shortcuts table plus keyboard navigation (C-10/C-11); relaunch-persistence (perform mutations, terminate, relaunch, assert state matches); JSON export producing a well-formed, re-importable file; and delete-then-undo flows (card no-confirmation/undo, list confirm-then-undo; board delete is confirm-only and not undoable, with a post-delete responsiveness check, and undoing a board *create* is verified to leave the app responsive).
 - **Definition of Done** for MVP scope: every P0 acceptance criterion in §9.1–9.7 passes, and both the unit and XCUITest suites are green when run headlessly via `xcodebuild` (see A-07).
 
 ---
@@ -435,7 +436,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 
 **P0 — Must-Have (MVP)**
 - B-01 Create board (name + emoji, default 3 lists)
-- B-02 Rename/delete board (confirm; undoable)
+- B-02 Rename/delete board (confirm; delete not undoable — see §4.7)
 - B-03 Board sidebar (collapsible, searchable, persists; empty-state onboarding)
 - L-01 Create list
 - L-02 Rename/delete list (confirm; undoable)

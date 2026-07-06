@@ -45,6 +45,50 @@ final class BoardCRUDUITests: KanbanUITestCase {
         XCTAssertTrue(poll(timeout: timeout) { !createFromEmpty.exists }, "empty state should be gone")
     }
 
+    // MARK: - Create then undo (SwiftData cascade-snapshot probe)
+
+    /// M7 hardening probe (empirically resolved): ⇧⌘N → create "Probe" → ⌘Z. Board creation is a
+    /// two-level cascade INSERT (board → 3 lists), so its undo is the inverse cascade delete — the
+    /// same shape that crashes SwiftData's undo snapshotting when a user-initiated
+    /// `context.delete(board)` runs it (see BoardStore.deleteBoard). This test ran the real app to
+    /// settle whether undoing a create is in that crash family. EMPIRICAL RESULT: it is NOT — the
+    /// undo cleanly removes the board (an undo of an INSERT replays the manager's recorded inverse
+    /// rather than performing a fresh snapshotted cascade delete), the app stays fully responsive,
+    /// and zero crash reports are produced. So board creation stays fully undoable (no createBoard
+    /// mitigation is applied), and this test asserts full undo plus liveness.
+    func testUndoAfterCreateBoardDoesNotCrash() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        // ⇧⌘N opens the create sheet; make and confirm "Probe".
+        app.typeKey("n", modifierFlags: [.command, .shift])
+        XCTAssertTrue(boardNameField.waitForExistence(timeout: timeout), "⇧⌘N should open the new-board sheet")
+        boardNameField.click()
+        boardNameField.typeText("Probe")
+        createBoardConfirmButton.click()
+
+        let probeRow = boardRow("Probe")
+        XCTAssertTrue(poll(timeout: timeout) { probeRow.exists }, "board-Probe should appear after create")
+        XCTAssertTrue(poll(timeout: timeout) { self.combinedText(self.boardDetail).contains("Probe") },
+                      "the new board should be selected/shown before the undo")
+
+        // The critical step: undo the create. Must NOT crash the app.
+        app.typeKey("z", modifierFlags: .command)
+
+        // Responsiveness: the app is still running foreground, its window exists, and the sidebar is
+        // reachable — a dead app (SwiftData assertion crash) fails all three.
+        XCTAssertTrue(poll(timeout: timeout) { self.app.state == .runningForeground },
+                      "app must still be running after undoing a create")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: timeout),
+                      "window must still exist after undoing a create")
+        XCTAssertTrue(boardRow("Groceries").waitForExistence(timeout: timeout),
+                      "sidebar must remain reachable after undoing a create")
+
+        // Full undo: the created board is gone from the sidebar after ⌘Z (empirically safe).
+        XCTAssertTrue(poll(timeout: timeout) { !probeRow.exists },
+                      "⌘Z should fully undo the create — board-Probe should be gone from the sidebar")
+    }
+
     // MARK: - Rename
 
     func testRenameBoard() {

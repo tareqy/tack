@@ -19,6 +19,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             TextField("Filter boards", text: $filterQuery)
                 .textFieldStyle(.roundedBorder)
+                .reportsTextInputFocus()
                 .padding(8)
                 .accessibilityIdentifier(AccessibilityID.sidebarFilterField)
 

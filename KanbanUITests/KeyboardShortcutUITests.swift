@@ -161,6 +161,52 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
                       "⇧⌘Z should redo the delete")
     }
 
+    /// M7 hardening: a mutating card command (⌘⌫) must NOT fire while an inline editor holds
+    /// keyboard focus — otherwise it deletes the selected card behind the editor's back (macOS
+    /// matches menu key-equivalents before the key window's responder chain). Guarded via the
+    /// `textInputFocused` focused value on both the command's enablement AND its action (see
+    /// AppCommands — the classic `firstResponder is NSTextView` check is unusable here, since
+    /// SwiftUI's text backend keeps a private `KeyViewProxy` as first responder in ALL states).
+    func testCmdDeleteGuardedWhileAddCardEditorOpen() {
+        launch(fixture: "standard")
+
+        // Select Buy milk (To Do), then open the add-card editor on To Do via ⌘N (its own list).
+        let buyMilk = anyCard("Buy milk")
+        XCTAssertTrue(buyMilk.waitForExistence(timeout: timeout))
+        buyMilk.click()
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").isSelected })
+
+        app.typeKey("n", modifierFlags: .command)
+        let toDoField = newCardField(under: list("To Do"))
+        XCTAssertTrue(poll(timeout: timeout) { toDoField.exists },
+                      "⌘N should open the add-card editor on To Do (Buy milk's list)")
+        // Deterministic focus: synthesized ⌘N focus hand-off can be flaky under XCUITest (M7 §6),
+        // so click the field — the guarded property under test is "field focused ⇒ no mutation".
+        toDoField.click()
+        toDoField.typeText("draft")
+
+        // ⌘⌫ while the editor is focused must be a no-op on the model — the card survives and the
+        // editor stays open (the key went to the field/menu no-op, not the Delete Card command).
+        app.typeKey(.delete, modifierFlags: .command)
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertTrue(anyCard("Buy milk").exists,
+                      "⌘⌫ with an inline editor open must NOT delete the selected card")
+        XCTAssertTrue(toDoField.exists, "the add-card editor should still be open after the guarded ⌘⌫")
+
+        // The guard is scoped, not permanent: once the editor closes, ⌘⌫ deletes normally again.
+        // (Esc can be flaky against an open inline field under XCUITest — retry until it closes.)
+        XCTAssertTrue(poll(timeout: timeout) {
+            if toDoField.exists { toDoField.typeKey(.escape, modifierFlags: []) }
+            return !toDoField.exists
+        }, "Esc should close the add-card editor")
+
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").isSelected },
+                      "Buy milk should still be the selection after the editor closes")
+        app.typeKey(.delete, modifierFlags: .command)
+        XCTAssertTrue(poll(timeout: timeout) { !self.anyCard("Buy milk").exists },
+                      "with no editor open, ⌘⌫ should delete the selected card again")
+    }
+
     func testUndoCardMove() {
         launch(fixture: "standard")
 

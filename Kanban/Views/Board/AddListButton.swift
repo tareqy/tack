@@ -24,6 +24,7 @@ struct AddListButton: View {
                 TextField("List name", text: $draft)
                     .textFieldStyle(.plain)
                     .focused($isFocused)
+                    .reportsTextInputFocus()
                     .onSubmit(commit)
                     .onExitCommand(perform: cancel)
                     .onAppear { isFocused = true }

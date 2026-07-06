@@ -57,6 +57,7 @@ struct InlineEditableText: View {
                     .textFieldStyle(.plain)
                     .font(font)
                     .focused($isFocused)
+                    .reportsTextInputFocus()
                     .onSubmit(commit)
                     .onExitCommand(perform: cancel)
                     .onAppear { isFocused = true }

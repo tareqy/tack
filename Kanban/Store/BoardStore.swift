@@ -67,32 +67,43 @@ final class BoardStore {
         }
     }
 
-    /// Deletes the board. The two-level cascade (board → lists → cards) runs with the undo
-    /// manager DETACHED and the undo stack is cleared afterwards, so board deletion is NOT
-    /// undoable — deliberately, and only for this operation:
+    /// Deletes the board with the undo manager DETACHED for the span of the delete, clearing the
+    /// undo stack afterwards, so board deletion is NOT undoable — deliberately, and only for this
+    /// operation.
     ///
-    /// SwiftData's automatic undo snapshotting of a two-level cascade delete crashes with a fatal
-    /// assertion whenever an undo manager is attached to an ON-DISK context (EXC_BREAKPOINT inside
-    /// SwiftData's cascade processing; reproduced three times under --uitest with identical stacks
-    /// through `deleteBoard → withUndoGroup` — crash reports Kanban-2026-07-06-092132/100952/
-    /// 101206.ips). `groupsByEvent` true vs false makes no difference (the crash is in snapshot
-    /// creation, not grouping), and in-memory unit stores never hit it — which is why the M1 suite
-    /// stayed green while every real-app board delete died. Single-level shapes are unaffected:
-    /// `deleteList` (list → cards) and `deleteCard` run green with the manager attached, so they
-    /// keep their original undo-grouped form.
+    /// WHAT IS KNOWN (empirical, stated without a causal theory): deleting a Board entity from an
+    /// ON-DISK context while an undo manager is attached fatally asserts inside SwiftData's undo
+    /// snapshotting (EXC_BREAKPOINT; reproduced three times under --uitest with identical stacks
+    /// through `deleteBoard → withUndoGroup` — crash reports Kanban-2026-07-06-092132 / 100952 /
+    /// 101206.ips). This is NOT attributable to a two-level board→list→card cascade: the crashing
+    /// repro deleted "Work", which had 3 lists and ZERO cards, whereas `deleteList` on a list that
+    /// DOES contain cards — the same list→card cascade shape — runs green with the manager attached
+    /// across the whole suite. The failure therefore tracks the on-disk Board delete itself, at the
+    /// same populated depth that the list-delete case survives; the deeper cause is unproven.
+    /// `groupsByEvent` true vs false makes no difference (the crash is in snapshot creation, not
+    /// grouping), and in-memory unit stores never hit it — which is why the M1 suite stayed green
+    /// while every real-app board delete died. `deleteList` and `deleteCard` are empirically green
+    /// with the manager attached and keep their original undo-grouped form.
     ///
-    /// The stack clear is required for safety, not convenience: earlier registered groups (board
-    /// renames, card ops on this board) hold references to the now-deleted objects, and undoing
-    /// them after the delete would mutate deleted rows. Losing undo history on a board delete is
-    /// acceptable UX — the operation is already confirmation-gated in SidebarView, and the PRD's
-    /// undo story centres on card operations, which remain fully undoable.
+    /// The mitigation is shape-independent: detaching the manager prevents the crashing snapshot
+    /// from being created at all. Clearing the stack afterwards is a safety requirement, not a
+    /// convenience — earlier registered groups (board renames, card ops on this board) hold
+    /// references to the now-deleted objects, and undoing them after the delete would mutate
+    /// deleted rows. Losing undo history on a board delete is acceptable UX — the operation is
+    /// already confirmation-gated in SidebarView, and the PRD's undo story centres on card
+    /// operations, which remain fully undoable.
     func deleteBoard(_ board: Board) {
-        let undoManager = context.undoManager
+        let held = context.undoManager
         context.undoManager = nil
+        // Defer the reattach + stack-clear so the manager is ALWAYS restored, even if a future edit
+        // adds an early return or a throwing call between here and the end — never leave the
+        // context's undo manager detached past this method.
+        defer {
+            context.undoManager = held
+            held?.removeAllActions()
+        }
         context.delete(board)
         save()
-        context.undoManager = undoManager
-        undoManager?.removeAllActions()
     }
 
     /// Pure — case-insensitive substring match on name; empty query returns all boards.

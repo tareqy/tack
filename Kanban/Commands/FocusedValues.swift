@@ -44,6 +44,7 @@ private struct FocusedListKey: FocusedValueKey { typealias Value = BoardList }
 private struct SelectedCardKey: FocusedValueKey { typealias Value = Card }
 private struct BoardActionsKey: FocusedValueKey { typealias Value = BoardActions }
 private struct BoardSelectionActionsKey: FocusedValueKey { typealias Value = BoardSelectionActions }
+private struct TextInputFocusedKey: FocusedValueKey { typealias Value = Bool }
 
 extension FocusedValues {
     /// The board currently shown in the detail pane.
@@ -70,5 +71,32 @@ extension FocusedValues {
     var boardSelectionActions: BoardSelectionActions? {
         get { self[BoardSelectionActionsKey.self] }
         set { self[BoardSelectionActionsKey.self] = newValue }
+    }
+    /// `true` while a text-input view (any TextField/TextEditor tagged with
+    /// `reportsTextInputFocus()`) holds keyboard focus; nil otherwise. AppCommands gates the
+    /// mutating card commands (⌘⌫, ⌘-arrows) and the bare-arrow selection commands on this, so a
+    /// menu key-equivalent can never mutate/steer the board behind an open editor.
+    ///
+    /// This is a focus-system signal by DESIGN, not a responder-chain sniff: on this macOS/SwiftUI
+    /// version the AppKit first responder while editing any SwiftUI text field is a private
+    /// `SwiftUI.KeyViewProxy` that is neither an `NSTextView` nor an `NSTextInputClient`, and it is
+    /// the first responder even when NO editor is open — so `firstResponder is NSTextView` (the
+    /// classic field-editor check) can never discriminate (verified empirically via a
+    /// responder-chain dump from inside the running app). `@FocusedValue` is also exactly the
+    /// change signal SwiftUI Commands re-evaluate enablement on, which responder changes are not.
+    var textInputFocused: Bool? {
+        get { self[TextInputFocusedKey.self] }
+        set { self[TextInputFocusedKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Marks a text-input view so that, while it holds keyboard focus, the command layer sees
+    /// `textInputFocused == true` and disables/no-ops the mutating card commands (see
+    /// `FocusedValues.textInputFocused`). Apply to EVERY TextField/TextEditor reachable while a
+    /// board can be on screen: the inline add-card/add-list/rename editors, the board sheets'
+    /// fields, and the sidebar filter.
+    func reportsTextInputFocus() -> some View {
+        focusedValue(\.textInputFocused, true)
     }
 }

@@ -23,10 +23,12 @@ struct CreateBoardSheet: View {
 
             TextField("Board name", text: $name)
                 .textFieldStyle(.roundedBorder)
+                .reportsTextInputFocus()
                 .accessibilityIdentifier(AccessibilityID.boardNameField)
 
             TextField("Emoji (optional)", text: $emoji)
                 .textFieldStyle(.roundedBorder)
+                .reportsTextInputFocus()
                 .accessibilityIdentifier(AccessibilityID.boardEmojiField)
                 .onChange(of: emoji) { _, newValue in
                     if newValue.count > 1 {
