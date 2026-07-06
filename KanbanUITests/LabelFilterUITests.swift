@@ -91,6 +91,67 @@ final class LabelFilterUITests: KanbanUITestCase {
                       "⌘F again should hide the bar")
     }
 
+    // MARK: - Keyboard navigation over the filtered (visible) snapshot
+
+    /// Final review (visibility seam): arrow navigation traverses only the VISIBLE cards. With a
+    /// red|green filter active, only Buy milk (green) and Write report (red) are on screen; arrows
+    /// step between them, skipping the hidden To Do cards entirely.
+    func testArrowNavigationTraversesOnlyVisibleCards() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        openFilterBar()
+        filterChip("red").click()
+        filterChip("green").click()
+
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").exists }, "Buy milk (green) visible")
+        XCTAssertTrue(anyCard("Write report").exists, "Write report (red) visible")
+        XCTAssertFalse(anyCard("Call plumber").exists, "unlabeled To Do cards are hidden")
+        XCTAssertFalse(anyCard("Return library books").exists, "unlabeled To Do cards are hidden")
+
+        // ↓ with no selection enters at the first VISIBLE card (Buy milk, To Do).
+        app.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").isSelected },
+                      "↓ should enter at the first visible card")
+
+        // ↓ again crosses to the next VISIBLE card (Write report), skipping the hidden To Do cards.
+        app.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Write report").isSelected },
+                      "↓ should skip hidden cards and land on the next visible card (Write report)")
+    }
+
+    // MARK: - Esc dismisses a confirmationDialog without collapsing the filter bar (regression)
+
+    /// Regression: Esc pressed to dismiss a delete-list confirmation must be consumed by the
+    /// dialog only — it must NOT also fire `BoardView.onExitCommand` and hide/clear the filter bar
+    /// (the two Esc-cancel mechanisms are on different responders and must stay independent).
+    func testEscInDeleteListConfirmKeepsFilterBar() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        openFilterBar()
+        filterChip("red").click()
+        XCTAssertTrue(poll(timeout: timeout) { !self.anyCard("Buy milk").exists }, "red filter hides Buy milk")
+
+        // Open the delete-list confirmation for To Do.
+        let toDoHeader = element(AccessibilityID.listHeader("To Do"))
+        XCTAssertTrue(toDoHeader.waitForExistence(timeout: timeout), "To Do header should exist")
+        toDoHeader.rightClick()
+        contextMenuItem("Delete List").click()
+
+        let confirm = element(AccessibilityID.deleteListConfirm)
+        XCTAssertTrue(confirm.waitForExistence(timeout: timeout), "delete-list confirmation should appear")
+
+        // Esc dismisses the dialog...
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { !confirm.exists }, "Esc should dismiss the confirmation dialog")
+
+        // ...but the filter bar stays visible AND the filter stays active AND To Do is intact.
+        XCTAssertTrue(filterChip("red").exists, "the filter bar must remain visible after the dialog's Esc")
+        XCTAssertFalse(anyCard("Buy milk").exists, "the filter must remain active (Buy milk still hidden)")
+        XCTAssertTrue(element(AccessibilityID.list("To Do")).exists, "To Do must not be deleted")
+    }
+
     // MARK: - Reset on board switch
 
     func testFilterResetsOnBoardSwitch() {

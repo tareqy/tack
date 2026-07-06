@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 /// The real app shell: a boards sidebar plus a detail pane. Selection is persisted to
 /// `@AppStorage` (keyed per `AppLaunchConfig.selectedBoardDefaultsKey` — see that type for the
@@ -14,8 +15,19 @@ struct RootView: View {
     @State private var selectedBoardID: UUID?
     @State private var isPresentingCreateBoard = false
 
+    /// E-01 export (⇧⌘E): the document is built on demand when Export is invoked, then the
+    /// `.fileExporter` below drives the sandbox-friendly save panel.
+    @State private var isPresentingExporter = false
+    @State private var exportDocument: ExportJSONDocument?
+
+    /// E-01 export e2e (test-only): the filename passed via `--export-to`, and the published
+    /// self-check result. Nil for every normal launch (see `runExportSelfCheckIfNeeded`).
+    private let exportToFilename: String?
+    @State private var exportSelfCheck: String?
+
     init(config: AppLaunchConfig) {
         _selectedBoardIDRaw = AppStorage(config.selectedBoardDefaultsKey)
+        exportToFilename = config.exportTo
     }
 
     var body: some View {
@@ -31,6 +43,18 @@ struct RootView: View {
             Color.clear
                 .allowsHitTesting(false)
                 .accessibilityIdentifier(AccessibilityID.rootView)
+
+            // E-01 export e2e marker (present only under --export-to): publishes the app's own
+            // write→read→decode self-check of the exported JSON for the test to assert (the runner
+            // is sandboxed and can't read the app's container file directly).
+            if let exportSelfCheck {
+                Color.clear
+                    .allowsHitTesting(false)
+                    .accessibilityRepresentation {
+                        Text(exportSelfCheck)
+                            .accessibilityIdentifier(AccessibilityID.exportSelfCheck)
+                    }
+            }
 
             NavigationSplitView {
                 SidebarView(selection: $selectedBoardID)
@@ -68,6 +92,9 @@ struct RootView: View {
         }
         .onAppear(perform: restoreSelectionIfNeeded)
         .onAppear(perform: wireUndoManager)
+        .onAppear(perform: runExportSelfCheckIfNeeded)
+        // Re-run once boards are first available (the @Query may populate after the initial appear).
+        .onChange(of: boards.count) { _, _ in runExportSelfCheckIfNeeded() }
         .onChange(of: undoManagerID) { _, _ in wireUndoManager() }
         .onChange(of: selectedBoardID) { _, newValue in
             selectedBoardIDRaw = newValue?.uuidString
@@ -77,7 +104,18 @@ struct RootView: View {
                 selectedBoardID = created.id
             }
         }
-        // Always-present board-navigation command surface (New Board, ⌘1–⌘9) — see AppCommands.
+        // E-01: the JSON export save panel. Hosted here (not in AppCommands — a `Commands` value
+        // can't present a `.fileExporter`); the ⇧⌘E command flips `isPresentingExporter` after
+        // building the document. `defaultFilename` gets the .json extension from `contentType`.
+        .fileExporter(
+            isPresented: $isPresentingExporter,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: ExportDocument.suggestedFilename()
+        ) { _ in
+            exportDocument = nil
+        }
+        // Always-present board-navigation command surface (New Board, ⌘1–⌘9, ⇧⌘E export) — see AppCommands.
         .focusedSceneValue(\.boardSelectionActions, boardSelectionActions)
     }
 
@@ -101,8 +139,40 @@ struct RootView: View {
                 guard position >= 1, position <= ordered.count else { return }
                 selectedBoardID = ordered[position - 1].id
             },
-            boardNames: sortedBoards.map(\.name)
+            boardNames: sortedBoards.map(\.name),
+            exportAllBoards: presentExporter
         )
+    }
+
+    /// E-01 export e2e self-check (test-only, `--export-to <file>`): encodes every board through
+    /// the production `ExportDocument` path, WRITES the JSON to the sandbox `UITest/` dir, READS it
+    /// back, DECODES it, and publishes a `"<board names>|<To Do card titles>"` summary via a hidden
+    /// AX marker. Proves the full encode→disk→decode round trip end-to-end in the running app; the
+    /// e2e asserts the published summary against the fixture (the runner can't read the app's
+    /// sandbox file directly). Runs once, only when the flag is set and boards exist.
+    private func runExportSelfCheckIfNeeded() {
+        guard let filename = exportToFilename, exportSelfCheck == nil else { return }
+        let boards = sortedBoards
+        guard !boards.isEmpty,
+              let data = try? ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)),
+              let directory = try? ModelContainerFactory.uiTestDirectory() else { return }
+        let url = directory.appendingPathComponent(filename)
+        try? data.write(to: url)
+        guard let readBack = try? Data(contentsOf: url),
+              let decoded = try? ExportDocument.decode(readBack) else { return }
+        let names = decoded.boards.map(\.name).joined(separator: ",")
+        let firstListCards = decoded.boards.first?.lists.first?.cards.map(\.title).joined(separator: ",") ?? ""
+        exportSelfCheck = "\(names)|\(firstListCards)"
+    }
+
+    /// Builds the export document from every board (position order) and presents the save panel.
+    /// No-op with no boards — the command is disabled in that case, but guard anyway.
+    private func presentExporter() {
+        let ordered = sortedBoards
+        guard !ordered.isEmpty,
+              let data = try? ExportDocument.encode(ExportDocument.makeEnvelope(boards: ordered)) else { return }
+        exportDocument = ExportJSONDocument(data: data)
+        isPresentingExporter = true
     }
 
     // MARK: - Undo wiring

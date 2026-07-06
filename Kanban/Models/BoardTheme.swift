@@ -94,7 +94,10 @@ enum HexColor {
     static func parse(_ hex: String) -> (r: Double, g: Double, b: Double)? {
         var stripped = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if stripped.hasPrefix("#") { stripped.removeFirst() }
-        guard stripped.count == 6, let value = UInt32(stripped, radix: 16) else { return nil }
+        // Require six literal hex DIGITS. `UInt32(_:radix:)` alone would accept a leading sign
+        // ("+FFFFF" parses as 0x0FFFFF), so validate the characters explicitly first.
+        guard stripped.count == 6, stripped.allSatisfy(\.isHexDigit),
+              let value = UInt32(stripped, radix: 16) else { return nil }
         let r = Double((value >> 16) & 0xFF) / 255.0
         let g = Double((value >> 8) & 0xFF) / 255.0
         let b = Double(value & 0xFF) / 255.0

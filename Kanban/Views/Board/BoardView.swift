@@ -82,6 +82,14 @@ struct BoardView: View {
         // over (`testFilterResetsOnBoardSwitch`). The bar's OWN visibility is left as the user set
         // it — only the active color set is board-scoped.
         .onChange(of: board.id) { _, _ in activeLabelFilter = [] }
+        // Final review (visibility seam): when the selected card stops being visible — its list is
+        // collapsed, or a label filter now hides it — drop the selection, so keyboard nav/commands
+        // never act on an off-screen card. Keyed to the deliberate visibility triggers ONLY (the
+        // active filter set and the set of collapsed lists), NOT the derived card-id set: the
+        // latter also churns on card add/remove and on transient SwiftData re-renders, which would
+        // clear a still-valid selection mid keyboard-navigation.
+        .onChange(of: activeLabelFilter) { _, _ in clearSelectionIfInvisible() }
+        .onChange(of: collapsedListIDs) { _, _ in clearSelectionIfInvisible() }
         // M11: Esc hides + clears the filter bar — via `.onExitCommand`, the SAME mechanism every
         // other Esc-cancel in this app uses (inline rename/add-card/add-list fields, the
         // card-detail sheet's own `.onExitCommand { dismiss() }`), NOT a `Commands` keyboard
@@ -168,7 +176,24 @@ struct BoardView: View {
 
     // MARK: - Exported command surface
 
-    private var snapshot: BoardSnapshot { BoardSnapshot(board: board) }
+    /// The VISIBLE snapshot the keyboard commands reason about: collapsed lists contribute no
+    /// cards and, when a filter is active, only matching cards appear — so arrow navigation and
+    /// ⌘-arrow moves both track exactly what's on screen (see `BoardSnapshot(board:activeLabelFilter:)`).
+    private var snapshot: BoardSnapshot { BoardSnapshot(board: board, activeLabelFilter: activeLabelFilter) }
+
+    /// Every card id currently visible on the board (collapsed lists + filtered-out cards excluded).
+    private var visibleCardIDs: Set<UUID> { Set(snapshot.lists.flatMap(\.cardIDs)) }
+
+    /// The ids of the currently-collapsed lists — the deliberate collapse/expand trigger the
+    /// selection-visibility onChange keys off (changes only when a list is collapsed or expanded).
+    private var collapsedListIDs: Set<UUID> { Set(board.sortedLists.filter(\.isCollapsed).map(\.id)) }
+
+    /// Drops `selectedCardID` if the selected card is no longer visible (its list collapsed, or a
+    /// filter now hides it). Called only from the filter/collapse onChange handlers above.
+    private func clearSelectionIfInvisible() {
+        guard let id = selectedCardID, !visibleCardIDs.contains(id) else { return }
+        selectedCardID = nil
+    }
 
     /// The live `Card` for the current selection (nil when none / stale).
     private var selectedCard: Card? {
@@ -182,6 +207,7 @@ struct BoardView: View {
             newCard: openNewCardEditor,
             newList: openNewListEditor,
             deleteSelectedCard: deleteSelectedCard,
+            openSelectedCard: openSelectedCard,
             moveSelectedCard: moveSelectedCard,
             moveSelection: moveSelection,
             canMoveSelectedCard: canMoveSelectedCard,
@@ -205,6 +231,13 @@ struct BoardView: View {
         guard let card = selectedCard else { return }
         selectedCardID = nil
         store.deleteCard(card)
+    }
+
+    /// ⌘O / Card ▸ "Open Card": opens the detail sheet for the selected card (the same sheet a
+    /// double-click on the card body opens). No-op when nothing is selected.
+    private func openSelectedCard() {
+        guard let card = selectedCard else { return }
+        selectedDetailCard = card
     }
 
     private func moveSelectedCard(_ direction: MoveDirection) {

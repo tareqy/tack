@@ -19,9 +19,13 @@ struct KanbanApp: App {
     init() {
         let config = AppLaunchConfig.current
         self.config = config
-        Self.applyAppearanceOverride(config.appearance)
 
         if config.isUITest {
+            // Appearance override is a test-only affordance — applied ONLY under --uitest so a
+            // normal launch never touches NSApp.appearance (keeps README's "inert for normal
+            // launch" claim true).
+            Self.applyAppearanceOverride(config.appearance)
+
             // Test-store failures are a test-harness bug, not a user-facing condition — keep the
             // hard failure so it surfaces loudly in CI rather than silently degrading.
             let uiContainer = try! ModelContainerFactory.uiTest(storeName: config.storeName, reset: config.reset)
@@ -66,6 +70,13 @@ struct KanbanApp: App {
                         transaction.animation = nil
                     }
                 }
+                // UI-test-only: pin the window to the PRIMARY (menu-bar/origin-zero) display. On a
+                // multi-display machine the window server can open a fresh --uitest window on a
+                // secondary display positioned above the primary; XCUITest addresses everything
+                // relative to the primary's top-left, so such a window reports negative-y frames and
+                // its controls fail hittability. Same spirit as `ensureWindow`'s ⌘N nudge. Inert in
+                // production (guarded on `isUITest`).
+                .background(UITestWindowPlacer())
         }
         // The system default (~900x450) is too narrow for the sidebar toolbar ("Hide Sidebar" +
         // "New Board") to fit without overflowing into the "more toolbar items" popover, where
@@ -118,6 +129,40 @@ struct KanbanApp: App {
                 .modelContainer(container)
                 .environment(store)
         }
+    }
+}
+
+/// UI-test-only: moves the hosting window onto the PRIMARY display (the menu-bar screen, AppKit
+/// origin `(0,0)`), centered, whenever it isn't already there. XCUITest maps all coordinates
+/// relative to the primary display's top-left, so a window the server placed on a secondary display
+/// (common on multi-monitor / CI arrangements) reports off-screen frames and fails hittability.
+/// Inert in production and for any non-`--uitest` launch.
+private struct UITestWindowPlacer: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        guard AppLaunchConfig.isUITest else { return view }
+        DispatchQueue.main.async { Self.placeOnPrimary(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard AppLaunchConfig.isUITest else { return }
+        DispatchQueue.main.async { Self.placeOnPrimary(nsView.window) }
+    }
+
+    private static func placeOnPrimary(_ window: NSWindow?) {
+        guard let window else { return }
+        // The primary display is the one at AppKit origin (0,0) (menu-bar screen); fall back to the
+        // first screen. Everything XCUITest hit-tests is relative to this display's top-left.
+        let screens = NSScreen.screens
+        guard let primary = screens.first(where: { $0.frame.origin == .zero }) ?? screens.first else { return }
+        let visible = primary.visibleFrame
+        guard !visible.contains(window.frame) else { return }
+        let origin = NSPoint(
+            x: visible.midX - window.frame.width / 2,
+            y: visible.midY - window.frame.height / 2
+        )
+        window.setFrameOrigin(origin)
     }
 }
 

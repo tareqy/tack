@@ -15,7 +15,7 @@ enum LabelFilter {
     static func visibleCards(_ cards: [Card], active: Set<LabelColor>) -> [Card] {
         guard !active.isEmpty else { return cards }
         return cards.filter { card in
-            let owned = Set(card.labels.compactMap { LabelColor(rawValue: $0.colorName) })
+            let owned = Set(card.labels.compactMap(\.color))
             return !owned.isDisjoint(with: active)
         }
     }

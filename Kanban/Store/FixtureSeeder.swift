@@ -17,6 +17,8 @@ enum FixtureSeeder {
             // Zero boards, but labels are still seeded (every later milestone assumes the 8-color
             // palette exists regardless of which board fixture is in play).
             BoardStore(context: context).ensureLabelsSeeded()
+        case "large":
+            seedLarge(context: context)
         default:
             // "standard" and any other value fall back to the same deterministic fixture used by
             // every later milestone's UI tests.
@@ -68,6 +70,31 @@ enum FixtureSeeder {
         store.toggleLabel(.red, on: writeReport)
 
         store.addCard(to: done, title: "Book flights") // no due date
+    }
+
+    /// NFR smoke fixture (N-04 responsiveness): one board "Large" with 3 lists and 500 cards
+    /// ("Card 0001"…"Card 0500", round-robin across the lists so each holds ~167), inserted
+    /// directly with one save for speed. Deterministic titles: "Card 0001" is the first card of
+    /// the first list. Labels are still seeded for palette parity.
+    @MainActor
+    private static func seedLarge(context: ModelContext) {
+        BoardStore(context: context).ensureLabelsSeeded()
+
+        let board = Board(name: "Large", emoji: "🗃️", position: 0)
+        context.insert(board)
+        let lists = ["To Do", "In Progress", "Done"].enumerated().map { index, name in
+            BoardList(name: name, position: index, board: board)
+        }
+        lists.forEach { context.insert($0) }
+
+        var perListCount = [0, 0, 0]
+        for n in 1...500 {
+            let listIndex = (n - 1) % 3
+            let title = String(format: "Card %04d", n)
+            context.insert(Card(title: title, position: perListCount[listIndex], list: lists[listIndex]))
+            perListCount[listIndex] += 1
+        }
+        try? context.save()
     }
 
     private static func seedSpike(context: ModelContext) {

@@ -16,6 +16,13 @@ struct AppLaunchConfig {
     /// (any normal production launch, and any test that omits the flag) defers to the system/user
     /// appearance, unchanged.
     let appearance: String?
+    /// E-01 export e2e hook, test-only: `--export-to <filename>` makes a `--uitest` launch write a
+    /// JSON export of every seeded board to `UITest/<filename>` inside the sandbox container, right
+    /// after seeding, then continue launching normally. It exists because the production Export path
+    /// runs through a sandboxed, remote-hosted `NSSavePanel` that XCUITest cannot reliably drive
+    /// (same class of limitation as `--appearance` vs `defaults write`); the export e2e triggers
+    /// this and decodes the resulting file. `nil` for every normal launch and every non-export test.
+    let exportTo: String?
 
     /// Configuration for the running process.
     static let current = AppLaunchConfig()
@@ -26,6 +33,7 @@ struct AppLaunchConfig {
         fixture = AppLaunchConfig.value(after: "--fixture", in: arguments)
         storeName = AppLaunchConfig.value(after: "--store-name", in: arguments) ?? "default"
         appearance = AppLaunchConfig.value(after: "--appearance", in: arguments)
+        exportTo = AppLaunchConfig.value(after: "--export-to", in: arguments)
     }
 
     /// Returns the argument immediately following `flag`, or nil if absent / trailing.

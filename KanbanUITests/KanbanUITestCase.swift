@@ -27,7 +27,7 @@ class KanbanUITestCase: XCTestCase {
     /// `AppLaunchConfig`/`KanbanApp` reads to force `NSApp.appearance` — omitted (nil, the default)
     /// for every pre-M10 call site, which is unaffected.
     @discardableResult
-    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil, appearance: String? = nil) -> XCUIApplication {
+    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil, appearance: String? = nil, exportTo: String? = nil) -> XCUIApplication {
         let resolvedStore = storeName ?? Self.sanitized(name)
         currentFixture = fixture
         currentStoreName = resolvedStore
@@ -37,6 +37,11 @@ class KanbanUITestCase: XCTestCase {
         if reset { args.append("--reset") }
         if let appearance {
             args.append(contentsOf: ["--appearance", appearance])
+        }
+        // E-01 export e2e: `--export-to <file>` makes the app write a JSON export of the seeded
+        // boards into the sandbox `UITest/` dir on launch (see AppLaunchConfig.exportTo).
+        if let exportTo {
+            args.append(contentsOf: ["--export-to", exportTo])
         }
         launched.launchArguments = args
         launched.launch()

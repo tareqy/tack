@@ -29,7 +29,10 @@ enum ModelContainerFactory {
     /// sidecars) is deleted first so the launch starts from a clean, freshly-seeded state; when
     /// false the existing store is reopened so mutations survive a relaunch. Same schema and
     /// migration plan as `production()`.
-    static func uiTest(storeName: String, reset: Bool) throws -> ModelContainer {
+    /// `Application Support/UITest/` inside the sandbox container — created if needed. Home to
+    /// every `--uitest` on-disk store AND the `--export-to` export file (see `KanbanApp`), so both
+    /// resolve the same directory the same way.
+    static func uiTestDirectory() throws -> URL {
         let fileManager = FileManager.default
         let appSupport = try fileManager.url(
             for: .applicationSupportDirectory,
@@ -39,6 +42,12 @@ enum ModelContainerFactory {
         )
         let directory = appSupport.appendingPathComponent("UITest", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    static func uiTest(storeName: String, reset: Bool) throws -> ModelContainer {
+        let fileManager = FileManager.default
+        let directory = try uiTestDirectory()
         let storeURL = directory.appendingPathComponent("\(storeName).sqlite")
 
         if reset {

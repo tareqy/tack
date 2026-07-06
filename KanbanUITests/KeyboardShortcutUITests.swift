@@ -273,6 +273,26 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
                       "↑ from the first In Progress card should cross back to the last To Do card")
     }
 
+    /// Final review: bare ↓ with NO selection is the keyboard ENTRY point. Select Next Card is now
+    /// enabled whenever a board is shown (not only when a card is already selected), so this
+    /// nil-selection branch — first card of the first non-empty list — is reachable (it was
+    /// stranded while the item was disabled with no selection). Purely keyboard-driven (no click)
+    /// so there's no delayed tap-gesture arbitration to race.
+    func testArrowSelectionEntersFromNoSelection() {
+        launch(fixture: "standard")
+        XCTAssertTrue(anyCard("Buy milk").waitForExistence(timeout: timeout))
+
+        // No card selected yet: ↓ selects the first card of the first non-empty list (To Do → Buy milk).
+        app.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").isSelected },
+                      "↓ with no selection should select the first card of the first non-empty list")
+
+        // And navigation continues normally from there.
+        app.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Call plumber").isSelected },
+                      "↓ should then advance to the next card")
+    }
+
     // MARK: - ⌘-arrow card moves (comprehensive, undo stepwise)
 
     func testCmdArrowMovesCard() {
@@ -315,6 +335,61 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
             self.cardIdentifiersByPosition(under: self.list("To Do"))
                 == self.expected("Buy milk", "Call plumber", "Return library books")
         }, "second ⌘Z should undo the within-list move (original order restored)")
+    }
+
+    // MARK: - Open Card (⌘O)
+
+    /// Card ▸ "Open Card" (⌘O): opens the selected card's detail sheet; disabled with no selection.
+    func testCmdOOpensSelectedCardDetail() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        // No selection → the menu item is disabled.
+        openMenu("Card")
+        XCTAssertTrue(menuItem("Open Card").waitForExistence(timeout: timeout), "Card ▸ Open Card should exist")
+        XCTAssertFalse(menuItem("Open Card").isEnabled, "Open Card should be disabled with no selection")
+        closeMenu()
+
+        // Select Call plumber, then ⌘O opens its detail sheet with the right title.
+        let callPlumber = anyCard("Call plumber")
+        XCTAssertTrue(callPlumber.waitForExistence(timeout: timeout))
+        callPlumber.click()
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Call plumber").isSelected })
+
+        openMenu("Card")
+        XCTAssertTrue(menuItem("Open Card").isEnabled, "Open Card should be enabled after selecting a card")
+        closeMenu()
+
+        app.typeKey("o", modifierFlags: .command)
+        let sheet = app.descendants(matching: .any)[AccessibilityID.cardDetailSheet]
+        XCTAssertTrue(sheet.waitForExistence(timeout: timeout), "⌘O should open the card-detail sheet")
+        let titleField = app.descendants(matching: .any)[AccessibilityID.cardDetailTitleField]
+        XCTAssertTrue(titleField.waitForExistence(timeout: timeout))
+        XCTAssertEqual(titleField.value as? String, "Call plumber",
+                       "the sheet should open on the selected card (Call plumber)")
+    }
+
+    // MARK: - ⌘N is collapse-aware
+
+    /// Final review: with the first list collapsed, ⌘N (no selection) targets the first EXPANDED
+    /// list, never the collapsed one (whose inline editor isn't on screen).
+    func testCmdNTargetsFirstExpandedListWhenFirstCollapsed() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        // Collapse To Do (the first list).
+        let collapseToDo = app.descendants(matching: .any)[AccessibilityID.collapseListButton("To Do")]
+        XCTAssertTrue(collapseToDo.waitForExistence(timeout: timeout), "To Do collapse chevron should exist")
+        collapseToDo.click()
+        XCTAssertTrue(poll(timeout: timeout) { self.collapseState("To Do") == "collapsed" },
+                      "To Do should collapse")
+
+        // ⌘N now opens the add-card editor on In Progress (the first expanded list), NOT To Do.
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(poll(timeout: timeout) { self.newCardField(under: self.list("In Progress")).exists },
+                      "⌘N should open the editor on the first EXPANDED list (In Progress)")
+        XCTAssertFalse(newCardField(under: list("To Do")).exists,
+                       "⌘N must not open an editor on the collapsed To Do")
     }
 
     // MARK: - Board switching
@@ -372,6 +447,12 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
 
     private func newCardField(under container: XCUIElement) -> XCUIElement {
         container.descendants(matching: .any)[AccessibilityID.newCardField]
+    }
+
+    /// The machine-readable collapse state ("collapsed"/"expanded") published by a column's detached
+    /// marker (mirrors CollapseUITests).
+    private func collapseState(_ name: String) -> String? {
+        app.descendants(matching: .any)[AccessibilityID.listCollapseState(name)].value as? String
     }
 
     private func expected(_ titles: String...) -> [String] {

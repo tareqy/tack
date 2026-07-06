@@ -11,10 +11,30 @@ enum MoveDirection: Equatable {
 /// Built at the call site from `board.sortedLists` / `sortedCards` (see `BoardSnapshot(board:)`),
 /// so all the navigation math below is a pure function of value types — unit-testable without a
 /// ModelContainer.
+///
+/// VISIBILITY (final review, cross-milestone seam): `BoardSnapshot(board:)` builds the VISIBLE
+/// snapshot — a collapsed list contributes ZERO `cardIDs` (its cards aren't on screen), and, when
+/// a label filter is active, only cards matching the filter appear. Keyboard selection navigation
+/// and ⌘-arrow moves both consume this snapshot, so both agree with what the user actually sees:
+/// arrows traverse only visible cards, and a card can never be keyboard-moved INTO a collapsed
+/// list. `isCollapsed` is carried per list (not merely inferred from an empty `cardIDs`) so
+/// `moveTarget` can distinguish a collapsed list — never a valid move destination — from an
+/// empty-but-expanded one, which still is (you can move a card into an empty open list).
 struct BoardSnapshot: Equatable {
     struct ListSnapshot: Equatable {
         let id: UUID
         let cardIDs: [UUID]
+        /// Whether the list is collapsed (a narrow pill on screen). Collapsed lists carry no
+        /// `cardIDs` here; this flag keeps them distinguishable from empty expanded lists for
+        /// `moveTarget`'s destination-skipping. Defaulted so pure-logic tests that don't exercise
+        /// collapse keep constructing snapshots positionally.
+        let isCollapsed: Bool
+
+        init(id: UUID, cardIDs: [UUID], isCollapsed: Bool = false) {
+            self.id = id
+            self.cardIDs = cardIDs
+            self.isCollapsed = isCollapsed
+        }
     }
     let lists: [ListSnapshot]
 }
@@ -74,13 +94,18 @@ enum SelectionNavigation {
 
     /// Where the selected CARD should be moved for a ⌘-arrow keypress (Card ▸ Move Card …).
     /// Returns `(listIndex, insertIndex)` for `store.moveCard(_, to: lists[listIndex], at: insertIndex)`.
+    /// `listIndex` indexes the FULL `board.sortedLists` (the snapshot keeps every list, including
+    /// collapsed ones, so the returned index maps straight back at the call site).
     ///
     /// - up/down: swap within the current list (target = neighbour's index). At the top edge for
     ///   up, or the bottom edge for down, returns nil (clamped — the move is a no-op).
-    /// - left/right: the LITERALLY adjacent list (index ± 1, empty lists included as valid
-    ///   destinations), inserting at `min(currentRowIndex, destinationCount)` so a shorter
-    ///   destination appends. nil at the edge lists (no adjacent list that way).
-    /// - nil selection (or an id no longer on the board) → nil.
+    /// - left/right: the nearest adjacent list in that direction that is NOT collapsed — an
+    ///   empty EXPANDED list is a valid destination (you can move a card into it), but a collapsed
+    ///   list is skipped over (a card can't be keyboard-moved into a collapsed column; visual
+    ///   adjacency is among the OPEN columns), mirroring how selection nav skips it. Inserts at
+    ///   `min(currentRowIndex, destinationCount)` so a shorter destination appends. nil when there
+    ///   is no non-collapsed list that way.
+    /// - nil selection (or an id no longer on the board / in a collapsed-or-filtered-out list) → nil.
     static func moveTarget(selectedCardID: UUID?, direction: MoveDirection, board: BoardSnapshot) -> (listIndex: Int, insertIndex: Int)? {
         let lists = board.lists
         guard let selectedCardID,
@@ -99,13 +124,11 @@ enum SelectionNavigation {
             guard cardIndex < cards.count - 1 else { return nil }
             return (listIndex, cardIndex + 1)
         case .left:
-            guard listIndex > 0 else { return nil }
-            let destCount = lists[listIndex - 1].cardIDs.count
-            return (listIndex - 1, min(cardIndex, destCount))
+            guard let dest = nearestNonCollapsedList(before: listIndex, in: lists) else { return nil }
+            return (dest, min(cardIndex, lists[dest].cardIDs.count))
         case .right:
-            guard listIndex < lists.count - 1 else { return nil }
-            let destCount = lists[listIndex + 1].cardIDs.count
-            return (listIndex + 1, min(cardIndex, destCount))
+            guard let dest = nearestNonCollapsedList(after: listIndex, in: lists) else { return nil }
+            return (dest, min(cardIndex, lists[dest].cardIDs.count))
         }
     }
 
@@ -113,6 +136,18 @@ enum SelectionNavigation {
 
     private static func firstCardOfFirstNonEmptyList(_ lists: [BoardSnapshot.ListSnapshot]) -> UUID? {
         lists.first(where: { !$0.cardIDs.isEmpty })?.cardIDs.first
+    }
+
+    /// The closest list index strictly before `index` that is not collapsed (empty expanded lists
+    /// qualify — they're valid move destinations; collapsed ones are skipped). nil if none.
+    private static func nearestNonCollapsedList(before index: Int, in lists: [BoardSnapshot.ListSnapshot]) -> Int? {
+        (0..<index).reversed().first { !lists[$0].isCollapsed }
+    }
+
+    /// The closest list index strictly after `index` that is not collapsed. nil if none.
+    private static func nearestNonCollapsedList(after index: Int, in lists: [BoardSnapshot.ListSnapshot]) -> Int? {
+        guard index < lists.count - 1 else { return nil }
+        return ((index + 1)..<lists.count).first { !lists[$0].isCollapsed }
     }
 
     private static func previousNonEmptyList(before index: Int, in lists: [BoardSnapshot.ListSnapshot]) -> Int? {
@@ -146,14 +181,19 @@ enum NextBoardSelection {
     }
 }
 
-/// Which list a New Card (⌘N) should be created on: the list containing the selected card
-/// ("focused list"), else the first list of the board, else nil (no lists).
+/// Which list a New Card (⌘N) should be created on. Collapse-aware — a New Card can't open its
+/// inline editor on a collapsed list (the column shows only a pill), so:
+/// - a selected card whose list is EXPANDED → that list (it's visible in the snapshot, so
+///   `cardIDs.contains` finds it — collapsed lists contribute no `cardIDs`);
+/// - otherwise (no/stale selection, or the selected card's list is collapsed) → the first
+///   NON-collapsed list;
+/// - all lists collapsed, or no lists → nil, which disables the New Card command.
 enum NewCardTarget {
     static func resolve(selectedCardID: UUID?, board: BoardSnapshot) -> UUID? {
         if let selectedCardID,
            let list = board.lists.first(where: { $0.cardIDs.contains(selectedCardID) }) {
             return list.id
         }
-        return board.lists.first?.id
+        return board.lists.first(where: { !$0.isCollapsed })?.id
     }
 }

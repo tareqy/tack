@@ -192,6 +192,37 @@ final class CardDetailUITests: KanbanUITestCase {
                        "staged label toggle must not be committed")
     }
 
+    /// Regression: staged (uncommitted) edits from one card's sheet must NOT leak into the next
+    /// card's sheet. Edit + toggle a label on Buy milk, Cancel (discard), then open Call plumber
+    /// and assert its fields show ITS real values.
+    func testStagedEditsDoNotLeakAcrossCards() {
+        launch(fixture: "standard")
+
+        // Buy milk (labels green,blue): stage a title change + a label toggle, then Cancel.
+        openDetailViaBodyDoubleClick("Buy milk")
+        let titleField = element(AccessibilityID.cardDetailTitleField)
+        XCTAssertTrue(titleField.waitForExistence(timeout: timeout))
+        titleField.click()
+        titleField.typeKey("a", modifierFlags: .command)
+        titleField.typeKey(.delete, modifierFlags: [])
+        titleField.typeText("Buy oat milk")
+        labelChip("red").click() // toggle a label ON (staged)
+        hittableButton("Cancel").click()
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists }, "Cancel should close the sheet")
+
+        // Buy milk itself is unchanged (staged edits discarded).
+        XCTAssertTrue(anyCard("Buy milk").exists, "Buy milk title must be unchanged after Cancel")
+        XCTAssertFalse(anyCard("Buy oat milk").exists, "the staged title must not be committed")
+
+        // Call plumber (unlabeled) must show its OWN values, not Buy milk's staged edits.
+        openDetailViaBodyDoubleClick("Call plumber")
+        XCTAssertEqual(element(AccessibilityID.cardDetailTitleField).value as? String, "Call plumber",
+                       "the second sheet must show Call plumber's title, not the first card's staged edit")
+        XCTAssertFalse(labelChip("red").isSelected, "Call plumber has no labels — no staged label may leak in")
+        XCTAssertFalse(labelChip("green").isSelected, "no label from Buy milk may leak in")
+        XCTAssertFalse(labelChip("blue").isSelected, "no label from Buy milk may leak in")
+    }
+
     // MARK: - Delete from detail
 
     func testDeleteFromDetail() {

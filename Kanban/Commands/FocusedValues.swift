@@ -17,6 +17,9 @@ struct BoardActions {
     let newList: () -> Void
     /// Deletes the selected card with no dialog (undoable). No-op when nothing is selected.
     let deleteSelectedCard: () -> Void
+    /// Opens the card-detail sheet for the selected card (Card ▸ "Open Card" / ⌘O). No-op when
+    /// nothing is selected.
+    let openSelectedCard: () -> Void
     /// Moves the selected card within/across lists (⌘-arrows). No-op at clamped edges.
     let moveSelectedCard: (MoveDirection) -> Void
     /// Moves the SELECTION (bare arrows). No-op when nothing is selected.
@@ -41,6 +44,10 @@ struct BoardSelectionActions {
     let selectBoard: (Int) -> Void
     /// Board names in position order — for the ⌘1–⌘9 menu titles and their enablement.
     let boardNames: [String]
+    /// E-01 / ⇧⌘E — File ▸ "Export All Boards…": builds the export document from every board and
+    /// presents the save panel (RootView owns the `.fileExporter`). Enablement keys off
+    /// `boardNames` being non-empty (nothing to export with no boards).
+    let exportAllBoards: () -> Void
 }
 
 // MARK: - FocusedValueKeys

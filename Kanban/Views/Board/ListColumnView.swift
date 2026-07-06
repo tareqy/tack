@@ -89,6 +89,18 @@ struct ListColumnView: View {
             }
         }
         .overlay(alignment: .topLeading) { collapseStateMarker }
+        // ⌘N routing: BoardView sets `addCardListID` to the target list; the matching column opens
+        // its inline editor and clears the token (so re-triggering the same list fires again).
+        // Handled HERE, on the always-present outer view, rather than inside `expandedColumn` —
+        // otherwise a token targeting a collapsed column (whose expanded branch isn't in the tree)
+        // would never be consumed and would WEDGE, blocking every later ⌘N to that same list.
+        // `NewCardTarget.resolve` already steers ⌘N away from collapsed lists, but clearing the
+        // token unconditionally on match makes a stale token impossible regardless.
+        .onChange(of: addCardListID) { _, newValue in
+            guard newValue == list.id else { return }
+            addCardListID = nil
+            if !list.isCollapsed { startAddingCard() }
+        }
     }
 
     /// Zero-sized, non-hit-testing marker whose `.accessibilityRepresentation` `Text` reliably
@@ -121,13 +133,6 @@ struct ListColumnView: View {
                 .opacity(targetedListID == list.id ? 1 : 0)
         }
         .contentShape(Rectangle())
-        // ⌘N routing: BoardView sets addCardListID to the target list; the matching column opens
-        // its inline editor and clears the token (so re-triggering the same list fires again).
-        .onChange(of: addCardListID) { _, newValue in
-            guard newValue == list.id else { return }
-            startAddingCard()
-            addCardListID = nil
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.list(list.name))
         .accessibilityValue("expanded")

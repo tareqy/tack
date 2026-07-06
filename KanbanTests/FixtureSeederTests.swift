@@ -126,6 +126,24 @@ struct FixtureSeederTests {
         #expect(boards.count == 2)
     }
 
+    @Test("large fixture seeds 1 board, 3 lists, 500 deterministically-titled cards")
+    func largeFixtureShape() {
+        let env = TestContainer()
+        FixtureSeeder.seed("large", context: env.context)
+
+        let boards = fetchBoards(env.context)
+        #expect(boards.count == 1)
+        let board = boards[0]
+        #expect(board.name == "Large")
+        #expect(board.sortedLists.map(\.name) == ["To Do", "In Progress", "Done"])
+
+        let allCards = board.sortedLists.flatMap(\.sortedCards)
+        #expect(allCards.count == 500)
+        // Deterministic titles: "Card 0001" is the first card of the first list (round-robin).
+        #expect(board.sortedLists[0].sortedCards.first?.title == "Card 0001")
+        #expect(Set(allCards.map(\.title)).count == 500) // all unique
+    }
+
     @Test("empty fixture seeds zero boards but still seeds labels")
     func emptyFixtureSeedsNoBoardsButLabels() {
         let env = TestContainer()

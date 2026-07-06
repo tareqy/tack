@@ -236,4 +236,72 @@ struct SelectionNavigationTests {
         let (board, _) = makeBoard([2, 2])
         #expect(SelectionNavigation.moveTarget(selectedCardID: nil, direction: .down, board: board) == nil)
     }
+
+    // MARK: - Visibility: collapsed lists (final-review cross-milestone seam)
+
+    /// Builds a snapshot from `(cardCount, isCollapsed)` specs. A collapsed list carries NO
+    /// `cardIDs` (matching `BoardSnapshot(board:)`'s visible-snapshot contract).
+    private func makeBoard(_ specs: [(count: Int, collapsed: Bool)]) -> (BoardSnapshot, [[UUID]]) {
+        let ids = specs.map { spec in spec.collapsed ? [] : (0..<spec.count).map { _ in UUID() } }
+        let lists = zip(specs, ids).map { spec, listIDs in
+            BoardSnapshot.ListSnapshot(id: UUID(), cardIDs: listIDs, isCollapsed: spec.collapsed)
+        }
+        return (BoardSnapshot(lists: lists), ids)
+    }
+
+    @Test("selection nav skips a collapsed list entirely (down/up cross over it)")
+    func navSkipsCollapsedListUpDown() {
+        let (board, ids) = makeBoard([(1, false), (2, true), (1, false)])
+        // Down from the only card of list 0 crosses the collapsed list 1 to list 2's first card.
+        #expect(SelectionNavigation.next(selectedCardID: ids[0][0], direction: .down, board: board) == ids[2][0])
+        // Up mirrors it.
+        #expect(SelectionNavigation.next(selectedCardID: ids[2][0], direction: .up, board: board) == ids[0][0])
+    }
+
+    @Test("selection nav left/right skips a collapsed list to the next visible one")
+    func navSkipsCollapsedListLeftRight() {
+        let (board, ids) = makeBoard([(1, false), (1, true), (1, false)])
+        #expect(SelectionNavigation.next(selectedCardID: ids[0][0], direction: .right, board: board) == ids[2][0])
+        #expect(SelectionNavigation.next(selectedCardID: ids[2][0], direction: .left, board: board) == ids[0][0])
+    }
+
+    @Test("moveTarget skips a collapsed adjacent list into the next open list (can't move into collapsed)")
+    func moveTargetSkipsCollapsedList() {
+        let (board, ids) = makeBoard([(2, false), (1, true), (1, false)])
+        // Right from list 0's second card: collapsed list 1 is skipped; lands in open list 2,
+        // clamped to its end (min(1, 1) = 1).
+        let right = SelectionNavigation.moveTarget(selectedCardID: ids[0][1], direction: .right, board: board)
+        #expect(right?.listIndex == 2)
+        #expect(right?.insertIndex == 1)
+        // Left mirrors it: from list 2's card, collapsed list 1 is skipped back to open list 0.
+        let left = SelectionNavigation.moveTarget(selectedCardID: ids[2][0], direction: .left, board: board)
+        #expect(left?.listIndex == 0)
+        #expect(left?.insertIndex == 0)
+    }
+
+    @Test("moveTarget still allows moving into an EMPTY expanded adjacent list (collapse ≠ empty)")
+    func moveTargetIntoEmptyExpandedStillWorks() {
+        let (board, ids) = makeBoard([(2, false), (0, false)])
+        let target = SelectionNavigation.moveTarget(selectedCardID: ids[0][0], direction: .right, board: board)
+        #expect(target?.listIndex == 1)
+        #expect(target?.insertIndex == 0)
+    }
+
+    @Test("moveTarget returns nil when every list that way is collapsed")
+    func moveTargetNilWhenOnlyCollapsedThatWay() {
+        let (board, ids) = makeBoard([(2, false), (1, true), (1, true)])
+        #expect(SelectionNavigation.moveTarget(selectedCardID: ids[0][0], direction: .right, board: board) == nil)
+    }
+
+    // MARK: - Visibility: active label filter (navigation over the filtered snapshot)
+
+    @Test("navigation over a filtered snapshot traverses only the visible cards")
+    func navOverFilteredSnapshot() {
+        // A single list whose middle card is filtered OUT (only cards 0 and 2 are visible): down
+        // from the first visible card lands on the next VISIBLE card, skipping the hidden one.
+        let visibleA = UUID(), visibleB = UUID()
+        let board = BoardSnapshot(lists: [.init(id: UUID(), cardIDs: [visibleA, visibleB])])
+        #expect(SelectionNavigation.next(selectedCardID: visibleA, direction: .down, board: board) == visibleB)
+        #expect(SelectionNavigation.next(selectedCardID: visibleB, direction: .up, board: board) == visibleA)
+    }
 }

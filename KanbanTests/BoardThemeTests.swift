@@ -49,6 +49,14 @@ struct HexColorTests {
         #expect(HexColor.parse("#3A5F8F00") == nil)
     }
 
+    @Test("rejects a leading sign that UInt32(radix:) would otherwise accept")
+    func rejectsLeadingSign() {
+        // Without explicit hex-digit validation these parse as numbers ("+FFFFF" → 0x0FFFFF).
+        #expect(HexColor.parse("+FFFFF") == nil)
+        #expect(HexColor.parse("-FFFFF") == nil)
+        #expect(HexColor.parse("#+ABCDE") == nil) // 6 chars after '#'; '+' is not a hex digit
+    }
+
     @Test("format renders canonical uppercase with no leading #")
     func formatIsCanonical() {
         #expect(HexColor.format(r: 58.0 / 255.0, g: 95.0 / 255.0, b: 143.0 / 255.0) == "3A5F8F")

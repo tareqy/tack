@@ -24,6 +24,7 @@ This revision incorporates a verified multi-reviewer PRD review plus user-locked
 - **Replaced D-04's placeholder API** (`remindctl`/`eventkitd`) with the real EventKit framework (`EKReminder`, `NSRemindersUsageDescription`); still P2/roadmap.
 - **Fixed traceability/consistency bugs:** Story 3 now correctly cites C-03/C-04; fixed a pre-existing mismatch where B-04 (P1) was listed in the Boards P0 MVP-scope line.
 - **New sections:** §4.6 Data Export, §4.7 Undo & Redo, §9 Acceptance Criteria & Testing, §10 Success Metrics & Non-Functional Requirements. The Appendix priority matrix was regenerated from the revised section tables.
+- **Final-review corrections (post-implementation):** dropped the *Return-on-focused-list* card-creation alias (§4.3 table, C-01, §9.3 C-01) — it was a redundant entry point with no unique capability, and ⌘N is the canonical keyboard creation path (design's sanctioned focus-routing fallback). Corrected the ⌘F shortcut description to "Toggle label filter bar" to match the implementation (it shows/hides the bar; it is not a focus command), and added the implemented ⌘O (open selected card) and ⇧⌘E (E-01 JSON export) rows to the app-wide shortcuts table.
 
 ---
 
@@ -126,7 +127,7 @@ Cards are individual tasks/items within a list — the most interactive element 
 
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
-| C-01 | Create card with title (inline) | P0 | Canonical creation path is the always-visible "+ Add card" row at the bottom of the list; double-clicking empty list space and pressing Return (while the list is focused) are aliases for the same action (see Keyboard Shortcuts below) |
+| C-01 | Create card with title (inline) | P0 | Canonical creation path is the always-visible "+ Add card" row at the bottom of the list; double-clicking empty list space is an alias for the same action. ⌘N is the keyboard creation path (focused list, else first list — see Keyboard Shortcuts below) |
 | C-02 | Edit card title inline | P0 | Click to edit, Enter to save, Esc to cancel |
 | C-03 | Reorder cards within a list (drag-and-drop) | P0 | SwiftUI `.draggable`/`.dropDestination`; visual ghost indicator during drag; snap-to-grid animation |
 | C-04 | Move cards between lists (drag-and-drop) | P0 | Cards can be dropped on the target list area; keyboard/VoiceOver alternative is C-11 (⌘+←/→) or the context-menu "Move to List" fallback (see A-04, §8) |
@@ -163,15 +164,16 @@ Drag-and-drop must not be the only way to select or move a card — this is requ
 | ⌘N | New card (focused list, else first list of active board) |
 | ⇧⌘N | New board |
 | ⌥⌘N | New list |
-| Return (list focused) | New card at bottom of focused list |
 | ⌘⌫ | Delete selected card (no dialog; undoable) |
+| ⌘O | Open selected card's detail |
 | ⌘⏎ / Esc | Save & close card detail / cancel-close |
 | ⌘Z / ⇧⌘Z | Undo / Redo |
 | ⌃⌘S | Toggle sidebar |
 | ⌘1–⌘9 | Select nth board |
-| ⌘F | Focus label filter (P1) |
+| ⇧⌘E | Export all boards to JSON |
+| ⌘F | Toggle label filter bar |
 
-The bare `+` shortcut is dropped — it conflicts with normal typing. Every shortcut has a corresponding menu-bar item (SwiftUI `Commands`); **the menu bar is the source of truth**. Canonical card creation is always the "+ Add card" row at the bottom of a list; double-click and Return are aliases for it, not separate mechanisms. In addition to the table above, arrow keys and ⌘+arrow keys provide keyboard-only card navigation and movement — see C-10/C-11 above.
+The bare `+` shortcut is dropped — it conflicts with normal typing. Every shortcut has a corresponding menu-bar item (SwiftUI `Commands`); **the menu bar is the source of truth**. Canonical card creation is always the "+ Add card" row at the bottom of a list; double-click is an alias for it, and ⌘N is the keyboard creation path — not separate mechanisms. (A Return-on-focused-list alias was considered but dropped: it was a redundant entry point with no unique capability, and ⌘N — a first-class menu command — is the canonical keyboard creation path. This is the design's sanctioned focus-routing fallback.) In addition to the table above, arrow keys and ⌘+arrow keys provide keyboard-only card navigation and movement — see C-10/C-11 above.
 
 ---
 
@@ -381,7 +383,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 
 ### 9.3 Cards
 
-- **C-01 — Create card.** Given a list is visible, when the user activates the "+ Add card" row (by click, by double-clicking empty list space, or by pressing Return while the list is focused), then a new card is created at the bottom of that list in title-edit mode.
+- **C-01 — Create card.** Given a list is visible, when the user activates the "+ Add card" row (by click, by double-clicking empty list space, or via ⌘N), then a new card is created at the bottom of that list in title-edit mode.
 - **C-02 — Edit card title inline.** Given a card, when the user clicks its title, types a new value, and presses Return, then the new title is saved and persisted; pressing Esc instead discards the edit and restores the previous title.
 - **C-03 — Reorder cards within a list.** Given a list with cards X, Y, Z (in that order), when the user drags X to position 2, then the list shows Y, X, Z, and the order persists after relaunch.
 - **C-04 — Move cards between lists.** Given a board with lists A and B, when the user drags card X from A onto position 2 of B, then X appears at position 2 of B (and is removed from A), and the order persists after relaunch.

@@ -28,9 +28,18 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .option])
                 .disabled(boardActions == nil)
 
-            Button("New Board") { boardSelection?.newBoard() }
+            Button("New Board") { guardedMutation { boardSelection?.newBoard() } }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(boardSelection == nil)
+
+            Divider()
+
+            // E-01 (⇧⌘E): export every board to JSON via the save panel (hosted by RootView).
+            // Enabled whenever at least one board exists; routed through `guardedMutation` so the
+            // panel is never presented from a typing context or beneath an open card-detail sheet.
+            Button("Export All Boards…") { guardedMutation { boardSelection?.exportAllBoards() } }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(boardSelection?.boardNames.isEmpty != false)
 
             Divider()
         }
@@ -42,8 +51,17 @@ struct AppCommands: Commands {
                 .disabled(boardActions?.selectedCard == nil || isTextInputActive)
         }
 
-        // MARK: Card — move the selected card with ⌘-arrows.
+        // MARK: Card — open the detail sheet + move the selected card with ⌘-arrows.
         CommandMenu("Card") {
+            // ⌘O opens the selected card's detail sheet. Gated EXACTLY like Delete Card (a card
+            // must be selected, and not while typing / beneath a sheet) so it can never open the
+            // sheet for a card the user can't currently see acting on.
+            Button("Open Card") { guardedMutation { boardActions?.openSelectedCard() } }
+                .keyboardShortcut("o", modifiers: .command)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
+
+            Divider()
+
             Button("Move Card Up") { guardedMutation { boardActions?.moveSelectedCard(.up) } }
                 .keyboardShortcut(.upArrow, modifiers: .command)
                 .disabled(boardActions?.selectedCard == nil || isTextInputActive)
@@ -96,19 +114,23 @@ struct AppCommands: Commands {
 
             // Bare arrows are gated on the text-input guard too (same hole family as ⌘⌫): while an
             // inline editor is focused, an enabled item would swallow ↑/↓ typed in the field, and
-            // disabling it instead lets the key fall through to the text caret.
+            // disabling it instead lets the key fall through to the text caret. Enablement keys off
+            // `boardActions != nil` (a board is shown), NOT `selectedCard != nil`: with no
+            // selection, ↓/↑ is the keyboard ENTRY point — `SelectionNavigation.next` maps a nil
+            // selection to the first card of the first non-empty list (an unreachable branch while
+            // this was gated on an existing selection).
             Button("Select Previous Card") { guardedMutation { boardActions?.moveSelection(.up) } }
                 .keyboardShortcut(.upArrow, modifiers: [])
-                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
+                .disabled(boardActions == nil || isTextInputActive)
 
             Button("Select Next Card") { guardedMutation { boardActions?.moveSelection(.down) } }
                 .keyboardShortcut(.downArrow, modifiers: [])
-                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
+                .disabled(boardActions == nil || isTextInputActive)
 
             Divider()
 
             ForEach(1...9, id: \.self) { position in
-                Button(boardTitle(position)) { boardSelection?.selectBoard(position) }
+                Button(boardTitle(position)) { guardedMutation { boardSelection?.selectBoard(position) } }
                     .keyboardShortcut(KeyEquivalent(Character("\(position)")), modifiers: .command)
                     .disabled(position > (boardSelection?.boardNames.count ?? 0))
             }

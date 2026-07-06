@@ -1,7 +1,7 @@
 # Kanban
 
 A native macOS kanban board — boards → lists → cards, drag-and-drop, labels, due dates, board
-themes, keyboard-driven end to end. SwiftUI + SwiftData, macOS 14+.
+themes, JSON export, keyboard-driven end to end. SwiftUI + SwiftData, macOS 14+.
 
 ## Build / run / test
 

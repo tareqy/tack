@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftData
+import os
 
 /// Common shape shared by Board's and BoardList's ordered children so position
 /// bookkeeping (renumbering/reordering) can be written once and reused for both.
@@ -19,6 +20,7 @@ extension Card: PositionedEntity {}
 @Observable
 final class BoardStore {
     private let context: ModelContext
+    private static let logger = Logger(subsystem: "com.tareq.Kanban", category: "BoardStore")
 
     init(context: ModelContext) {
         self.context = context
@@ -30,7 +32,10 @@ final class BoardStore {
 
     // MARK: - Labels
 
-    /// Idempotent: exactly 8 CardLabel rows exist after any number of calls.
+    /// Idempotent: exactly 8 CardLabel rows exist after any number of calls. Called from
+    /// `KanbanApp.init` BEFORE `RootView` wires the scene undo manager onto the context, so at seed
+    /// time `context.undoManager` is nil — `withUndoGroup` runs the body ungrouped and the label
+    /// inserts never land on the undo stack (a stray ⌘Z can't delete the palette).
     func ensureLabelsSeeded() {
         withUndoGroup("Seed Labels") {
             let existingColorNames = Set(fetchLabels().map(\.colorName))
@@ -211,14 +216,6 @@ final class BoardStore {
     func updateTitle(_ card: Card, _ title: String) {
         withUndoGroup("Rename Card") {
             card.title = title
-            card.updatedAt = .now
-            save()
-        }
-    }
-
-    func updateDetails(_ card: Card, _ details: String?) {
-        withUndoGroup("Edit Card Details") {
-            card.details = details
             card.updatedAt = .now
             save()
         }
@@ -442,6 +439,12 @@ final class BoardStore {
     }
 
     private func save() {
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // No user-facing error channel yet (roadmap: surface save failures in-app). Log so a
+            // failed persist isn't swallowed silently — the previous `try?` discarded it outright.
+            Self.logger.error("Model context save failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

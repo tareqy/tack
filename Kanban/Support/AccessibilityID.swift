@@ -1,6 +1,14 @@
 enum AccessibilityID {
     static let rootView = "root-view"
 
+    /// E-01 export e2e marker (test-only, present only under `--export-to`). Detached
+    /// `.accessibilityRepresentation` `Text` (the `boardThemeValue` pattern) exposing the app's
+    /// own write→read→decode self-check of the exported JSON: `"<board names>|<To Do card titles>"`
+    /// (comma-joined). Sandbox blocks the UI-test runner from reading the app's container file
+    /// directly, so the app decodes the file it wrote and publishes the result for the test to
+    /// assert (see `RootView.runExportSelfCheckIfNeeded`).
+    static let exportSelfCheck = "export-self-check"
+
     static func board(_ name: String) -> String { "board-\(name)" }
     static func list(_ name: String) -> String { "list-\(name)" }
     static func card(_ title: String) -> String { "card-\(title)" }

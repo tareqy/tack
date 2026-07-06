@@ -148,6 +148,36 @@ final class BoardCRUDUITests: KanbanUITestCase {
                       "board-Work row should be gone after confirmed delete")
     }
 
+    /// Regression (realistic input): deleting a board that HAS cards, labels, and due dates —
+    /// Groceries (5 cards) — must remove it and leave the app responsive, not trip the known
+    /// SwiftData cascade-delete crash class (`BoardStore.deleteBoard` detaches the undo manager to
+    /// avoid it). A dead app (assertion crash) fails the responsiveness poll below.
+    func testDeleteCardBearingBoardStaysResponsive() {
+        launch(fixture: "standard")
+
+        let groceriesRow = boardRow("Groceries")
+        XCTAssertTrue(groceriesRow.waitForExistence(timeout: timeout))
+        XCTAssertTrue(anyCard("Buy milk").waitForExistence(timeout: timeout),
+                      "Groceries' cards should be on screen before the delete")
+
+        groceriesRow.rightClick()
+        contextMenuItem("Delete").click()
+
+        let confirmButton = app.descendants(matching: .any)[AccessibilityID.deleteBoardConfirm]
+        XCTAssertTrue(confirmButton.waitForExistence(timeout: timeout), "confirmation dialog should appear")
+        confirmButton.click()
+
+        XCTAssertTrue(poll(timeout: timeout) { !self.boardRow("Groceries").exists },
+                      "Groceries row should be gone after confirmed delete")
+        // Responsiveness: still foreground, window present, sidebar reachable (Work survives).
+        XCTAssertTrue(poll(timeout: timeout) { self.app.state == .runningForeground },
+                      "app must stay running after a card-bearing board delete")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: timeout),
+                      "window must still exist after the delete")
+        XCTAssertTrue(boardRow("Work").waitForExistence(timeout: timeout),
+                      "sidebar must remain reachable — Work survives")
+    }
+
     // MARK: - Filter
 
     func testFilter() {
@@ -204,6 +234,10 @@ final class BoardCRUDUITests: KanbanUITestCase {
 
     private func boardRow(_ name: String) -> XCUIElement {
         app.descendants(matching: .any)[AccessibilityID.board(name)]
+    }
+
+    private func anyCard(_ title: String) -> XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.card(title)]
     }
 
     private func selectAllAndDelete(_ field: XCUIElement) {
