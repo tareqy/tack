@@ -46,6 +46,16 @@ struct RootView: View {
             // Sidebar", item only reachable through the overflow menu). Moving the exact same
             // `ToolbarItem` up to the split view fixed it outright. See task-5 report.
             .toolbar {
+                // M8: the per-board Theme button (its popover lives inside `ThemeButton`).
+                // Contributed HERE, not from BoardView's own body, for the exact same
+                // empirically-established reason as the "New Board" item below — parameterized
+                // with whichever board `detailContent` is currently showing, so it's simply
+                // absent when no board is selected.
+                ToolbarItem(placement: .automatic) {
+                    if let selectedBoard {
+                        ThemeButton(board: selectedBoard, store: store)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isPresentingCreateBoard = true
@@ -74,6 +84,14 @@ struct RootView: View {
     // MARK: - Command surface
 
     private var sortedBoards: [Board] { boards.sorted { $0.position < $1.position } }
+
+    /// The board currently shown in the detail pane (nil when none selected/matched) — shared by
+    /// `detailContent` and the toolbar's Theme button so both agree on exactly which board is on
+    /// screen.
+    private var selectedBoard: Board? {
+        guard let selectedBoardID else { return nil }
+        return boards.first(where: { $0.id == selectedBoardID })
+    }
 
     private var boardSelectionActions: BoardSelectionActions {
         BoardSelectionActions(
@@ -119,8 +137,8 @@ struct RootView: View {
     private var detailContent: some View {
         if boards.isEmpty {
             EmptyStateView(onCreateBoard: { isPresentingCreateBoard = true })
-        } else if let selectedBoardID, let board = boards.first(where: { $0.id == selectedBoardID }) {
-            BoardView(board: board, store: store)
+        } else if let selectedBoard {
+            BoardView(board: selectedBoard, store: store)
         } else {
             Text("Select a board")
                 .foregroundStyle(.secondary)

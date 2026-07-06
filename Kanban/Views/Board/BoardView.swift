@@ -37,6 +37,13 @@ struct BoardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding()
+        // M8: the resolved board theme washes the whole surface; `.padding()` above reports the
+        // full offered size back up (it just insets its child), so attaching `.background` here —
+        // AFTER frame+padding — covers the entire board area edge-to-edge rather than only the
+        // inset content region. Columns keep their own `Color.secondary.opacity` backing
+        // (ListColumnView) on top, so content legibility is unaffected by the wash underneath.
+        .background(themeBackground)
+        .overlay(alignment: .topLeading) { themeValueMarker }
         .sheet(item: $selectedDetailCard) { card in
             CardDetailView(card: card, store: store, onDelete: {
                 // Order matters — see CardDetailView.onDelete: close the sheet (nil the item)
@@ -90,6 +97,40 @@ struct BoardView: View {
             }
             .padding(.vertical, 4)
         }
+    }
+
+    // MARK: - M8: theme
+
+    private var themeBackground: Color {
+        switch ThemeResolution.resolve(themeName: board.themeName, customHex: board.customThemeHex) {
+        case .preset(let theme): theme.backgroundColor
+        case .custom(let color): color
+        }
+    }
+
+    /// The value XCUITest reads off `AccessibilityID.boardThemeValue`: a preset's raw name (e.g.
+    /// "ocean") or "custom:<HEX>" — see that identifier's doc comment for why this is a dedicated
+    /// marker rather than folded into `board-detail`.
+    private var themeExposedValue: String {
+        switch ThemeResolution.resolve(themeName: board.themeName, customHex: board.customThemeHex) {
+        case .preset(let theme): theme.rawValue
+        case .custom: "custom:\(board.customThemeHex ?? "")"
+        }
+    }
+
+    /// Zero-sized and non-hit-testing so it never affects layout or intercepts clicks — the same
+    /// "detached marker" shape as `RootView.rootView` and the M6 `.accessibilityRepresentation`
+    /// pattern (`CardView.labelDots`/`DueDateBadge`) combined: a representation `Text` is what
+    /// XCUITest reliably surfaces a `.value` from; a plain view's `.accessibilityValue` was
+    /// verified empty in M6.
+    private var themeValueMarker: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityRepresentation {
+                Text(themeExposedValue)
+                    .accessibilityIdentifier(AccessibilityID.boardThemeValue)
+            }
     }
 
     // MARK: - Exported command surface

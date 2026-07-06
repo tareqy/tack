@@ -67,6 +67,27 @@ final class BoardStore {
         }
     }
 
+    /// One undo step ("Change Theme"). Choosing a preset — call with `customHex: nil` — clears any
+    /// stored custom hex outright. Committing a custom hex normalizes it to the canonical
+    /// "RRGGBB" form (uppercase, no '#') via `HexColor.format`, regardless of the caller's
+    /// casing/'#' presence, so `board.customThemeHex` and the UI's displayed/exposed value never
+    /// drift apart. `themeName` is written exactly as passed — the UI keeps it "as-is" when only
+    /// committing a custom hex by passing the board's current `themeName` back unchanged, so the
+    /// preset a later "clear custom hex" action would fall back to is preserved. An
+    /// invalid/unparsable `customHex` is treated as no custom color: the UI is expected to validate
+    /// before calling (see `ThemeButton`), but the store itself never persists unparsable hex.
+    func setTheme(_ board: Board, themeName: String, customHex: String?) {
+        withUndoGroup("Change Theme") {
+            board.themeName = themeName
+            if let customHex, let parsed = HexColor.parse(customHex) {
+                board.customThemeHex = HexColor.format(r: parsed.r, g: parsed.g, b: parsed.b)
+            } else {
+                board.customThemeHex = nil
+            }
+            save()
+        }
+    }
+
     /// Deletes the board with the undo manager DETACHED for the span of the delete, clearing the
     /// undo stack afterwards, so board deletion is NOT undoable — deliberately, and only for this
     /// operation.

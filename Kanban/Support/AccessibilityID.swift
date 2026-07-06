@@ -56,4 +56,16 @@ enum AccessibilityID {
     static let dueQuickNextWeek = "due-quick-nextweek"
     static let dueDatePickerField = "due-date-picker"
     static let dueClear = "due-clear"
+
+    // MARK: - M8: board themes
+
+    static let themeButton = "theme-button"
+    static func themeSwatch(_ name: String) -> String { "theme-swatch-\(name)" }
+    static let themeHexField = "theme-hex-field"
+    /// Detached marker (the `rootView` / `cardLabels` pattern) exposing the board's RESOLVED theme
+    /// as `accessibilityValue`: a preset's raw name (e.g. "ocean") or "custom:<HEX>" when a custom
+    /// hex color is in effect. Kept separate from `boardDetail` itself — that element's combined
+    /// value is the board's emoji+name text (see `BoardView.header`), so folding the theme into it
+    /// would clobber the existing regression assertions that check for the board's name there.
+    static let boardThemeValue = "board-theme-value"
 }
