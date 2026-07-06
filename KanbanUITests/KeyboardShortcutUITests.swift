@@ -50,6 +50,23 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
         XCTAssertTrue(menuItem("Delete Card").isEnabled, "Delete Card enabled after selecting a card")
         closeMenu()
 
+        // M11 carried cleanup: edge-list enablement. Buy milk sits in the LEFTMOST list (To Do —
+        // no `canMoveSelectedCard(.left)` destination), so Move Card Left must be disabled while
+        // Move Card Right (into In Progress) stays enabled.
+        openMenu("Card")
+        XCTAssertFalse(menuItem("Move Card Left").isEnabled, "Move Card Left disabled at the leftmost list")
+        XCTAssertTrue(menuItem("Move Card Right").isEnabled, "Move Card Right enabled toward an adjacent list")
+        closeMenu()
+
+        // Mirror at the other edge: Book flights sits in the RIGHTMOST list (Done) — Move Card
+        // Right must be disabled there, with Move Card Left enabled.
+        anyCard("Book flights").click()
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Book flights").isSelected })
+        openMenu("Card")
+        XCTAssertFalse(menuItem("Move Card Right").isEnabled, "Move Card Right disabled at the rightmost list")
+        XCTAssertTrue(menuItem("Move Card Left").isEnabled, "Move Card Left enabled toward an adjacent list")
+        closeMenu()
+
         // Disabled case (second launch, empty fixture): New Card / New List disabled with no board.
         app.terminate()
         launch(fixture: "empty")

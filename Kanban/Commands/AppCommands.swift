@@ -75,6 +75,25 @@ struct AppCommands: Commands {
 
             Divider()
 
+            // M11 (LB-03): the label filter bar. Gated like New Card/List (no board ⇒ nothing to
+            // filter) PLUS the text-input guard, per the established pattern — toggling the bar
+            // while an inline editor is focused would rearrange the board behind the caret. Esc
+            // (hide + clear) is deliberately NOT a Commands item here — empirically, a bare
+            // (no-modifier) `.keyboardShortcut(.escape, modifiers: [])` Button never fires (⌘F
+            // above works; a live UI run proved plain Escape does not — see the LabelFilterUITests
+            // debugging note). `BoardView` instead uses `.onExitCommand`, the SAME mechanism every
+            // OTHER Esc-cancel in this app already uses (inline rename/add-card/add-list fields,
+            // the card-detail sheet) — none of which have a menu item either, so this isn't a
+            // departure from convention, it's following it. That mechanism is responder-chain
+            // based, which is exactly what gives it "Esc in an editor keeps its cancel semantics"
+            // for free: a focused field's OWN `.onExitCommand` sits closer to the first responder
+            // and wins before BoardView's ever sees the key.
+            Button("Filter by Label") { guardedMutation { boardActions?.toggleLabelFilterBar() } }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(boardActions == nil || isTextInputActive)
+
+            Divider()
+
             // Bare arrows are gated on the text-input guard too (same hole family as ⌘⌫): while an
             // inline editor is focused, an enabled item would swallow ↑/↓ typed in the field, and
             // disabling it instead lets the key fall through to the text caret.

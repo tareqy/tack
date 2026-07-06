@@ -102,6 +102,16 @@ struct SelectionNavigationTests {
         #expect(SelectionNavigation.next(selectedCardID: ids[0][1], direction: .right, board: board) == ids[2][0])
     }
 
+    /// M11 carried cleanup (M7 minor): the left-direction mirror of `rightSkipsEmptyList`, using
+    /// the exact same board shape reversed — a 2-card list, an empty list, then a 1-card list —
+    /// so `previousNonEmptyList` must both SKIP the empty middle list AND clamp the row index into
+    /// the shorter destination, just like the right-direction case already covers.
+    @Test("left skips an empty list and clamps into the previous non-empty one")
+    func leftSkipsEmptyList() {
+        let (board, ids) = makeBoard([1, 0, 2])
+        #expect(SelectionNavigation.next(selectedCardID: ids[2][1], direction: .left, board: board) == ids[0][0])
+    }
+
     @Test("left at the first list clamps (stays)")
     func leftAtFirstListStays() {
         let (board, ids) = makeBoard([2, 2])

@@ -30,9 +30,20 @@ struct BoardView: View {
     /// Command trigger: bumped to make `AddListButton` open its inline editor (⌥⌘N).
     @State private var addListToken = 0
 
+    /// M11 (LB-03): the label filter bar's visibility + active color set. PURE VIEW STATE — never
+    /// persisted, never touches `BoardStore` — reset whenever the displayed board changes (see the
+    /// `.onChange(of: board.id)` below), since `BoardView` is NOT recreated across a board switch
+    /// (`RootView.detailContent` swaps only the `board:` argument, so `@State` would otherwise leak
+    /// a Groceries-board filter onto the Work board).
+    @State private var isFilterBarVisible = false
+    @State private var activeLabelFilter: Set<LabelColor> = []
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+            if isFilterBarVisible {
+                LabelFilterBar(active: $activeLabelFilter)
+            }
             columnsScrollView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -66,6 +77,27 @@ struct BoardView: View {
         .focusedSceneValue(\.selectedCard, selectedCard)
         .focusedSceneValue(\.focusedList, selectedCard?.list)
         .focusedSceneValue(\.boardActions, selectedDetailCard == nil ? boardActions : nil)
+        // M11: the filter is per-board view state (see the property's doc comment) — clear it
+        // whenever the board identity changes so switching boards never carries a stale filter
+        // over (`testFilterResetsOnBoardSwitch`). The bar's OWN visibility is left as the user set
+        // it — only the active color set is board-scoped.
+        .onChange(of: board.id) { _, _ in activeLabelFilter = [] }
+        // M11: Esc hides + clears the filter bar — via `.onExitCommand`, the SAME mechanism every
+        // other Esc-cancel in this app uses (inline rename/add-card/add-list fields, the
+        // card-detail sheet's own `.onExitCommand { dismiss() }`), NOT a `Commands` keyboard
+        // shortcut (a bare, no-modifier `.keyboardShortcut(.escape, modifiers: [])` empirically
+        // never fires — see `AppCommands`'s "Filter by Label" doc comment). Being responder-chain
+        // based is exactly what makes this respect the brief's guard for free: a focused editor's
+        // OWN closer `.onExitCommand` wins before this one ever sees the key, and the card-detail
+        // sheet is a separate key window entirely, so this handler is simply unreachable while
+        // either is active — no explicit `textInputFocused`/`isSheet` check needed. The
+        // `isFilterBarVisible` guard is still explicit: with the bar already hidden there is
+        // nothing to do, and this must not swallow an Esc meant for anything else.
+        .onExitCommand {
+            guard isFilterBarVisible else { return }
+            isFilterBarVisible = false
+            activeLabelFilter = []
+        }
     }
 
     private var header: some View {
@@ -90,7 +122,8 @@ struct BoardView: View {
                         targetedListID: $targetedListID,
                         selectedCardID: $selectedCardID,
                         selectedDetailCard: $selectedDetailCard,
-                        addCardListID: $addCardListID
+                        addCardListID: $addCardListID,
+                        activeLabelFilter: activeLabelFilter
                     )
                 }
                 AddListButton(board: board, store: store, columnWidth: Self.columnWidth, openEditorToken: addListToken)
@@ -151,7 +184,8 @@ struct BoardView: View {
             deleteSelectedCard: deleteSelectedCard,
             moveSelectedCard: moveSelectedCard,
             moveSelection: moveSelection,
-            canMoveSelectedCard: canMoveSelectedCard
+            canMoveSelectedCard: canMoveSelectedCard,
+            toggleLabelFilterBar: toggleLabelFilterBar
         )
     }
 
@@ -189,5 +223,16 @@ struct BoardView: View {
     private func canMoveSelectedCard(_ direction: MoveDirection) -> Bool {
         guard let selectedCardID else { return false }
         return SelectionNavigation.moveTarget(selectedCardID: selectedCardID, direction: direction, board: snapshot) != nil
+    }
+
+    /// ⌘F / View ▸ "Filter by Label": flips bar visibility. Hiding ALWAYS clears the active filter
+    /// — showing never needs to (it can only ever be non-empty while the bar is already visible) —
+    /// so re-showing the bar always starts from "no filter". Esc (see the `.onExitCommand` above)
+    /// performs the exact same hide-and-clear, just via a different trigger.
+    private func toggleLabelFilterBar() {
+        isFilterBarVisible.toggle()
+        if !isFilterBarVisible {
+            activeLabelFilter = []
+        }
     }
 }

@@ -24,6 +24,12 @@ struct BoardActions {
     /// Whether ⌘←/⌘→ can currently move the selected card (there is an adjacent list) — drives the
     /// Card ▸ Move Card Left/Right enablement.
     let canMoveSelectedCard: (MoveDirection) -> Bool
+    /// ⌘F / View ▸ "Filter by Label": shows/hides the label filter bar (LB-03). PURE VIEW STATE on
+    /// `BoardView` — never a `BoardStore` mutation. Hiding ALWAYS clears the active filter (see
+    /// `BoardView.toggleLabelFilterBar`). Esc-to-hide is handled separately, directly on
+    /// `BoardView` via `.onExitCommand` (a bare-Escape `Commands` shortcut does not fire — see that
+    /// call site's doc comment), so it is NOT exposed here.
+    let toggleLabelFilterBar: () -> Void
 }
 
 /// Board-navigation command surface published by `RootView`: always present (RootView is always in

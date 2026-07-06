@@ -35,6 +35,10 @@ struct ListColumnView: View {
     /// Command trigger from BoardView (⌘N): when it equals this list's id, open the inline
     /// add-card editor. This column resets it to nil after handling so the same list can retrigger.
     @Binding var addCardListID: UUID?
+    /// M11 (LB-03): the label filter bar's active color set, threaded down from `BoardView` as a
+    /// plain value (not a `Binding` — this view only ever READS it for rendering, never mutates
+    /// it). Drives `visibleCards` below. Empty means "no filter" (every card renders).
+    let activeLabelFilter: Set<LabelColor>
 
     /// Same fixed row height as the M2 spike, so its DropMath reasoning carries over unchanged.
     private let rowHeight: CGFloat = 44
@@ -52,6 +56,21 @@ struct ListColumnView: View {
     @FocusState private var isAddCardFocused: Bool
     @State private var isFooterTargeted = false
     @State private var isPillTargeted = false
+
+    // MARK: - M11: label filter (rendering only — see the type doc's DROP MATH note below)
+
+    /// This list's cards after the active filter (`LabelFilter`, OR semantics) — what `cardList`
+    /// actually renders. Empty `activeLabelFilter` ⇒ identical to `list.sortedCards`.
+    private var visibleCards: [Card] { LabelFilter.visibleCards(list.sortedCards, active: activeLabelFilter) }
+
+    /// The header/pill count badge text: plain total ("3") with no active filter, "visible/total"
+    /// ("1/3") once a filter hides at least one card in this list. Same `AccessibilityID
+    /// .listCardCount` identifier either way — only the exposed VALUE format changes.
+    private var countLabel: String {
+        let total = list.cards.count
+        guard !activeLabelFilter.isEmpty else { return "\(total)" }
+        return "\(visibleCards.count)/\(total)"
+    }
 
     // M9: a column renders as either the full expanded column or a narrow collapsed pill, per
     // `list.isCollapsed`. BOTH branches carry the SAME `.contain` container id
@@ -157,7 +176,9 @@ struct ListColumnView: View {
             .accessibilityIdentifier(AccessibilityID.collapseListButton(list.name))
             .accessibilityLabel("Expand \(list.name)")
 
-            Text("\(list.cards.count)")
+            // M11: collapsed pills show FILTERED counts too — same `countLabel` as the expanded
+            // header below.
+            Text(countLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
@@ -221,7 +242,9 @@ struct ListColumnView: View {
                 store.renameList(list, to: newName)
             }
             Spacer(minLength: 4)
-            Text("\(list.cards.count)")
+            // M11: plain total ("3") normally; "visible/total" ("1/3") while a label filter is
+            // active and hiding at least one card — see `countLabel`.
+            Text(countLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
@@ -256,10 +279,19 @@ struct ListColumnView: View {
 
     // MARK: - Cards
 
+    /// M11 (LB-03): renders `visibleCards` (the filtered set), NOT `list.sortedCards` — but every
+    /// DROP-INDEX computation below (`appendCard`, `handleDrop`, and `CardView.dropOnRow`) still
+    /// reasons about the FULL `list.sortedCards` / `board.sortedLists`, deliberately unchanged. The
+    /// filter is pure rendering state; touching drop math would mean re-deriving indices for a
+    /// frozen, empirically-proven M4→M5 architecture for a P2 feature that doesn't need it. Accepted
+    /// MVP consequence: with a filter active, a drop that visually lands "between" two now-hidden
+    /// cards still resolves against their FULL-list position, which can be a card's-width off from
+    /// where it looks like it landed. `BoardStore.moveCard`'s semantics are entirely untouched
+    /// either way — this is a rendering-only decision, made once, here.
     private var cardList: some View {
         ScrollView {
             VStack(spacing: 8) {
-                ForEach(list.sortedCards) { card in
+                ForEach(visibleCards) { card in
                     CardView(
                         board: board,
                         list: list,

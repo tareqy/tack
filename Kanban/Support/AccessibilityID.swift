@@ -85,4 +85,13 @@ enum AccessibilityID {
     /// reliably surfaces its value. The `list(_:)` container keeps its own `.accessibilityValue` for
     /// real VoiceOver; tests read the machine-readable state off this marker.
     static func listCollapseState(_ name: String) -> String { "list-state-\(name)" }
+
+    // MARK: - M11: label filter bar
+
+    /// `LabelFilterBar`'s per-color toggle chip. Distinct from `labelChip(_:)` (the card-detail
+    /// `LabelPicker`'s chip, "label-chip-") by prefix — the two views are never on screen together,
+    /// but the different prefix keeps a global identifier search unambiguous regardless.
+    static func filterChip(_ color: String) -> String { "filter-chip-\(color)" }
+    /// The filter bar's "Clear" button — present only while a filter is active (`LabelFilterBar`).
+    static let filterClear = "filter-clear"
 }
