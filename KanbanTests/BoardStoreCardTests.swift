@@ -145,4 +145,132 @@ struct BoardStoreCardTests {
         #expect(source.sortedCards.map(\.title) == ["B"])
         #expect(source.sortedCards.map(\.position) == [0])
     }
+
+    // MARK: - applyCardEdits (M6 card detail sheet)
+
+    @Test("applyCardEdits with no changes registers no undo step and does not bump updatedAt")
+    func applyCardEditsNoOpRegistersNoUndoStep() {
+        let env = TestContainer(withUndo: true)
+        env.store.ensureLabelsSeeded()
+        let board = makeBoard(env)
+        let list = board.sortedLists[0]
+        let card = env.store.addCard(to: list, title: "Task")
+        env.store.toggleLabel(.red, on: card)
+        let originalUpdatedAt = card.updatedAt
+
+        Thread.sleep(forTimeInterval: 0.01)
+        env.store.applyCardEdits(
+            card,
+            title: card.title,
+            details: card.details,
+            labels: [.red],
+            dueDate: card.dueDate
+        )
+
+        #expect(card.updatedAt == originalUpdatedAt)
+
+        // ensureLabelsSeeded, createBoard (+3 lists), addCard, toggleLabel(.red) == exactly 4
+        // undoable user steps. If the no-op call had registered a 5th (spurious) group, this
+        // count would be 5.
+        var undoCount = 0
+        while env.undoManager?.canUndo == true {
+            env.undoManager?.undo()
+            undoCount += 1
+        }
+        #expect(undoCount == 4)
+    }
+
+    @Test("applyCardEdits applies title, details, and dueDate changes and bumps updatedAt")
+    func applyCardEditsAppliesFieldChanges() {
+        let env = TestContainer()
+        let board = makeBoard(env)
+        let list = board.sortedLists[0]
+        let card = env.store.addCard(to: list, title: "Original")
+        let originalUpdatedAt = card.updatedAt
+
+        Thread.sleep(forTimeInterval: 0.01)
+        let dueDateWithTime = Calendar.current.date(byAdding: .day, value: 3, to: .now)!
+        env.store.applyCardEdits(
+            card,
+            title: "Renamed",
+            details: "Some details",
+            labels: [],
+            dueDate: dueDateWithTime
+        )
+
+        #expect(card.title == "Renamed")
+        #expect(card.details == "Some details")
+        #expect(card.dueDate == Calendar.current.startOfDay(for: dueDateWithTime))
+        #expect(card.includesTime == false)
+        #expect(card.updatedAt > originalUpdatedAt)
+    }
+
+    @Test("applyCardEdits diffs labels: adds new ones and removes dropped ones")
+    func applyCardEditsDiffsLabels() {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        let board = makeBoard(env)
+        let list = board.sortedLists[0]
+        let card = env.store.addCard(to: list, title: "Task")
+        env.store.toggleLabel(.red, on: card)
+        env.store.toggleLabel(.blue, on: card)
+        #expect(Set(card.labels.map(\.colorName)) == ["red", "blue"])
+
+        env.store.applyCardEdits(
+            card,
+            title: card.title,
+            details: card.details,
+            labels: [.blue, .green], // drop red, keep blue, add green
+            dueDate: card.dueDate
+        )
+
+        #expect(Set(card.labels.map(\.colorName)) == ["blue", "green"])
+    }
+
+    @Test("applyCardEdits's whole edit undoes in one step, including labels")
+    func applyCardEditsUndoesInOneStep() {
+        let env = TestContainer(withUndo: true)
+        env.store.ensureLabelsSeeded()
+        let board = makeBoard(env)
+        let list = board.sortedLists[0]
+        let card = env.store.addCard(to: list, title: "Original")
+        env.store.toggleLabel(.red, on: card)
+
+        env.store.applyCardEdits(
+            card,
+            title: "Renamed",
+            details: "New details",
+            labels: [.blue],
+            dueDate: .now
+        )
+        #expect(card.title == "Renamed")
+        #expect(card.details == "New details")
+        #expect(Set(card.labels.map(\.colorName)) == ["blue"])
+        #expect(card.dueDate != nil)
+
+        env.undoManager?.undo()
+
+        #expect(card.title == "Original")
+        #expect(card.details == nil)
+        #expect(Set(card.labels.map(\.colorName)) == ["red"])
+        #expect(card.dueDate == nil)
+    }
+
+    @Test("applyCardEdits keeps the existing title when the new title is empty/whitespace")
+    func applyCardEditsEmptyTitleIsNoOp() {
+        let env = TestContainer()
+        let board = makeBoard(env)
+        let list = board.sortedLists[0]
+        let card = env.store.addCard(to: list, title: "Keep Me")
+        let originalUpdatedAt = card.updatedAt
+
+        Thread.sleep(forTimeInterval: 0.01)
+        env.store.applyCardEdits(card, title: "   ", details: "Added details", labels: [], dueDate: nil)
+
+        #expect(card.title == "Keep Me")
+        // Other fields DID change, so the whole call still applies and still bumps updatedAt —
+        // the empty-title rule only no-ops the title itself.
+        #expect(card.updatedAt > originalUpdatedAt)
+        #expect(card.details == "Added details")
+    }
 }

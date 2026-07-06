@@ -167,9 +167,15 @@ class KanbanUITestCase: XCTestCase {
 
     /// Identifiers (e.g. "card-Spike A1") of every card element under `container`, ordered top to
     /// bottom by on-screen Y position — the canonical way to assert visual list order.
+    ///
+    /// Excludes `card-labels-*` (the M6 label-dots container on a card's face): it is a descendant
+    /// of its `card-<title>` row and also begins with "card-", so without the exclusion every
+    /// labeled row would be counted twice — the same shadowing trap the `cardtitle-` prefix comment
+    /// in `AccessibilityID` documents.
     func cardIdentifiersByPosition(under container: XCUIElement) -> [String] {
         let cards = container.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-"))
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT identifier BEGINSWITH %@",
+                                  "card-", "card-labels-"))
             .allElementsBoundByIndex
         return cards.sorted { $0.frame.minY < $1.frame.minY }.map(\.identifier)
     }

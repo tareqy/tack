@@ -262,6 +262,55 @@ final class BoardStore {
         }
     }
 
+    /// Commits every staged field of the M6 card-detail sheet as ONE undo group ("Edit Card"), so a
+    /// single ⌘Z reverses title/details/labels/dueDate together. Applies only the fields that
+    /// actually changed (labels are diffed against the card's current set; untouched labels aren't
+    /// re-written) and bumps `updatedAt` only if something changed — a call where every argument
+    /// already matches the card's current state registers no undo step at all. `title` is trimmed;
+    /// an empty/whitespace-only result is a no-op for the title specifically (the existing title is
+    /// kept) rather than clearing it — other changed fields in the same call still apply and still
+    /// bump `updatedAt`. `dueDate` is normalized exactly like `setDueDate` (local start-of-day;
+    /// `includesTime` stays false).
+    func applyCardEdits(_ card: Card, title: String, details: String?, labels: Set<LabelColor>, dueDate: Date?) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTitle = trimmedTitle.isEmpty ? card.title : trimmedTitle
+        let normalizedDueDate = dueDate.map { Calendar.current.startOfDay(for: $0) }
+        let currentLabelColors = Set(card.labels.compactMap { LabelColor(rawValue: $0.colorName) })
+        let labelsToAdd = labels.subtracting(currentLabelColors)
+        let labelsToRemove = currentLabelColors.subtracting(labels)
+
+        let titleChanged = newTitle != card.title
+        let detailsChanged = details != card.details
+        let dueDateChanged = normalizedDueDate != card.dueDate
+        let labelsChanged = !labelsToAdd.isEmpty || !labelsToRemove.isEmpty
+
+        guard titleChanged || detailsChanged || dueDateChanged || labelsChanged else { return }
+
+        withUndoGroup("Edit Card") {
+            if titleChanged { card.title = newTitle }
+            if detailsChanged { card.details = details }
+            if dueDateChanged {
+                card.dueDate = normalizedDueDate
+                card.includesTime = false
+            }
+            if labelsChanged {
+                let labelsByColorName = Dictionary(uniqueKeysWithValues: fetchLabels().map { ($0.colorName, $0) })
+                for color in labelsToAdd {
+                    if let label = labelsByColorName[color.rawValue] {
+                        card.labels.append(label)
+                    }
+                }
+                for color in labelsToRemove {
+                    if let index = card.labels.firstIndex(where: { $0.colorName == color.rawValue }) {
+                        card.labels.remove(at: index)
+                    }
+                }
+            }
+            card.updatedAt = .now
+            save()
+        }
+    }
+
     // MARK: - Position bookkeeping
 
     private func renumber<T: PositionedEntity>(_ items: [T]) {

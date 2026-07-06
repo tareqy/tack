@@ -31,6 +31,7 @@ struct ListColumnView: View {
     let columnWidth: CGFloat
     @Binding var targetedListID: UUID?
     @Binding var selectedCardID: UUID?
+    @Binding var selectedDetailCard: Card?
 
     /// Same fixed row height as the M2 spike, so its DropMath reasoning carries over unchanged.
     private let rowHeight: CGFloat = 44
@@ -126,7 +127,8 @@ struct ListColumnView: View {
                         list: list,
                         card: card,
                         store: store,
-                        selectedCardID: $selectedCardID
+                        selectedCardID: $selectedCardID,
+                        selectedDetailCard: $selectedDetailCard
                     )
                 }
                 addCardRow

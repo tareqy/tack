@@ -15,6 +15,9 @@ struct BoardView: View {
     /// Board-local single-card selection. M7 migrates this to `FocusedValues` (for the ⌘⌫ Edit-menu
     /// shortcut); keep it simple @State for now, per the brief.
     @State private var selectedCardID: UUID?
+    /// The card currently showing its M6 detail sheet, if any — bound into every `CardView` so
+    /// double-click-body / context-menu "Open Card" can set it from anywhere on the board.
+    @State private var selectedDetailCard: Card?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -23,6 +26,14 @@ struct BoardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding()
+        .sheet(item: $selectedDetailCard) { card in
+            CardDetailView(card: card, store: store, onDelete: {
+                // Order matters — see CardDetailView.onDelete: close the sheet (nil the item)
+                // BEFORE deleting, so no re-render evaluates the sheet against a deleted card.
+                selectedDetailCard = nil
+                store.deleteCard(card)
+            })
+        }
     }
 
     private var header: some View {
@@ -45,7 +56,8 @@ struct BoardView: View {
                         store: store,
                         columnWidth: Self.columnWidth,
                         targetedListID: $targetedListID,
-                        selectedCardID: $selectedCardID
+                        selectedCardID: $selectedCardID,
+                        selectedDetailCard: $selectedDetailCard
                     )
                 }
                 AddListButton(board: board, store: store, columnWidth: Self.columnWidth)

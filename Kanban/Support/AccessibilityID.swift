@@ -42,4 +42,18 @@ enum AccessibilityID {
     static func cardTitle(_ title: String) -> String { "cardtitle-\(title)" }
     /// The single inline "+ Add card" TextField (only one is ever open at a time, like `newListField`).
     static let newCardField = "new-card-field"
+
+    // MARK: - M6: card detail sheet
+
+    /// The card face's label-dots container (`accessibilityValue` = comma-joined color names,
+    /// ordered by `LabelColor.allCases`), distinct from `labelChip(_:)` which is the detail sheet's
+    /// per-color toggle chip.
+    static func cardLabels(_ title: String) -> String { "card-labels-\(title)" }
+    static let cardDetailTitleField = "detail-title-field"
+    static let cardDetailDescriptionField = "detail-description-field"
+    static let dueQuickToday = "due-quick-today"
+    static let dueQuickTomorrow = "due-quick-tomorrow"
+    static let dueQuickNextWeek = "due-quick-nextweek"
+    static let dueDatePickerField = "due-date-picker"
+    static let dueClear = "due-clear"
 }
