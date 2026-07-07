@@ -1,7 +1,7 @@
-# Kanban
+# Tack
 
-A native macOS kanban board — boards → lists → cards, drag-and-drop, labels, due dates, board
-themes, JSON export, keyboard-driven end to end. SwiftUI + SwiftData, macOS 14+.
+Tack — a fast, local-first kanban board for macOS: boards → lists → cards, drag-and-drop, labels,
+due dates, board themes, JSON export, keyboard-driven end to end. SwiftUI + SwiftData, macOS 14+.
 
 ## Build / run / test
 
@@ -22,8 +22,8 @@ Then:
 
 ```
 make build    # xcodebuild build
-make unit     # KanbanTests only (Swift Testing)
-make ui       # KanbanUITests only (XCTest/XCUITest)
+make unit     # TackTests only (Swift Testing)
+make ui       # TackUITests only (XCTest/XCUITest)
 make test     # unit + ui
 ```
 
@@ -32,14 +32,14 @@ The Makefile pins `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. On
 needs the full Xcode, CLT alone won't run the test targets), this makes `make` work regardless of
 the global `xcode-select` state; override it if Xcode lives somewhere else.
 
-To open in the IDE instead: `make gen && open Kanban.xcodeproj`.
+To open in the IDE instead: `make gen && open Tack.xcodeproj`.
 
 ### Running the app manually
 
-`open .build/DerivedData/Build/Products/Debug/Kanban.app` after `make build`, or run it from
+`open .build/DerivedData/Build/Products/Debug/Tack.app` after `make build`, or run it from
 Xcode. Test-only launch flags (`--uitest --fixture <name> --store-name <name> --reset
 --appearance light|dark`) are parsed by `AppLaunchConfig` and are inert for a normal launch — see
-`KanbanUITestCase.launch` for how the UI suite uses them.
+`TackUITestCase.launch` for how the UI suite uses them.
 
 ### UI-test requirements (read before running `make ui`)
 
@@ -52,7 +52,7 @@ Xcode. Test-only launch flags (`--uitest --fixture <name> --store-name <name> --
   prompts macOS for Accessibility/Automation permission for the test runner. Grant it once,
   interactively, before expecting `make ui` to succeed non-interactively (e.g. in CI).
 - Prefer running the UI suite serially (`-parallel-testing-enabled NO`, already set by `make ui`)
-  and, for a large run, splitting by suite (`-only-testing:KanbanUITests/<SuiteName>`) rather than
+  and, for a large run, splitting by suite (`-only-testing:TackUITests/<SuiteName>`) rather than
   one long invocation — easier to triage, and this codebase's own development process did exactly
   that for every milestone gate.
 
@@ -60,20 +60,20 @@ Xcode. Test-only launch flags (`--uitest --fixture <name> --store-name <name> --
 
 Four layers, dependencies point strictly downward:
 
-1. **Models (`Kanban/Models/`, `@Model`)** — persistent state only: `Board`, `BoardList`, `Card`,
+1. **Models (`Tack/Models/`, `@Model`)** — persistent state only: `Board`, `BoardList`, `Card`,
    `CardLabel`, `LabelColor`, `BoardTheme`. SwiftData relationships are unordered, so parents
    expose `sortedLists`/`sortedCards` computed properties — nothing reads raw relationship arrays
    for order.
-2. **Pure logic (`Kanban/Store/*.swift`, `Kanban/DragDrop/DropMath.swift`)** — zero SwiftUI/SwiftData
+2. **Pure logic (`Tack/Store/*.swift`, `Tack/DragDrop/DropMath.swift`)** — zero SwiftUI/SwiftData
    imports, the TDD core: `Reordering` (position math), `DropMath` (drop point → insertion index),
    `DueDateStatus` (urgency from an injected clock), `SelectionNavigation` (keyboard
    selection/move math over a plain `BoardSnapshot`), `LabelFilter` (OR-semantics card filtering).
    Exhaustively unit-tested without a `ModelContainer`.
-3. **`BoardStore` (`Kanban/Store/BoardStore.swift`, `@MainActor @Observable`)** — the *only*
+3. **`BoardStore` (`Tack/Store/BoardStore.swift`, `@MainActor @Observable`)** — the *only*
    mutation surface: board/list/card CRUD, moves, label toggles, due dates. Wraps multi-write
    operations in explicit undo groups so one ⌘Z reverses one user action. Injected via
    `.environment`; views never write models directly.
-4. **Views (`Kanban/Views/`) + Commands (`Kanban/Commands/`)** — `RootView` (sidebar +
+4. **Views (`Tack/Views/`) + Commands (`Tack/Commands/`)** — `RootView` (sidebar +
    `NavigationSplitView` detail), `BoardView`/`ListColumnView`/`CardView` (the board surface,
    production drag-and-drop), `CardDetail/` (title/description/labels/due date sheet).
    `AppCommands` is the single source of truth for every keyboard shortcut: each has a visible
@@ -95,15 +95,15 @@ the scene's `@Environment(\.undoManager)`); the system Edit ▸ Undo/Redo items 
 
 ## Tests
 
-- **`KanbanTests`** (Swift Testing, no UI): one suite per pure-logic/store area — reordering, drop
+- **`TackTests`** (Swift Testing, no UI): one suite per pure-logic/store area — reordering, drop
   math, due-date status, board/list/card CRUD, cascade delete, label seeding/toggling/filtering,
   selection navigation, undo/redo, and more. Fast, no `ModelContainer` needed for the pure-logic
   suites; an in-memory `ModelContainer` (`Helpers/TestContainer.swift`) backs the store-level ones.
-- **`KanbanUITests`** (XCTest/XCUITest): one file per user-facing journey — board CRUD, list CRUD,
+- **`TackUITests`** (XCTest/XCUITest): one file per user-facing journey — board CRUD, list CRUD,
   card CRUD, drag-and-drop, card detail, keyboard shortcuts, label filter, board themes, list
   collapse, due-date badges, persistence across relaunch, and a launch smoke test. Deterministic
   fixtures (`FixtureSeeder`: "empty", "standard", "spike") seed an on-disk, per-test SwiftData
-  store (`KanbanUITestCase.launch`), so tests never depend on run order or leftover state.
+  store (`TackUITestCase.launch`), so tests never depend on run order or leftover state.
 
 Run everything with `make test`; see the UI-test requirements above before running `make ui`.
 
@@ -130,3 +130,7 @@ Out of scope for the shipped feature set, tracked here for later:
   the model closer to Trello parity.
 - **Collaboration / sync** — multi-device or multi-user sync is entirely out of scope; the app is
   single-user, single-Mac, local-SwiftData-store only.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -1,4 +1,4 @@
-name: Kanban
+name: Tack
 options:
   bundleIdPrefix: com.tareq
   deploymentTarget:
@@ -12,52 +12,52 @@ settings:
     ENABLE_HARDENED_RUNTIME: NO
     GENERATE_INFOPLIST_FILE: YES
 targets:
-  Kanban:
+  Tack:
     type: application
     platform: macOS
-    sources: [Kanban]
+    sources: [Tack]
     entitlements:
-      path: Kanban/Kanban.entitlements
+      path: Tack/Tack.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
     info:
-      path: Kanban/Info.plist
+      path: Tack/Info.plist
       properties:
-        CFBundleDisplayName: Kanban
+        CFBundleDisplayName: Tack
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "14.0"
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
         UTExportedTypeDeclarations:
-          - UTTypeIdentifier: com.tareq.kanban.card
+          - UTTypeIdentifier: com.tareq.tack.card
             UTTypeConformsTo: [public.data]
-            UTTypeDescription: Kanban Card
-          - UTTypeIdentifier: com.tareq.kanban.list
+            UTTypeDescription: Tack Card
+          - UTTypeIdentifier: com.tareq.tack.list
             UTTypeConformsTo: [public.data]
-            UTTypeDescription: Kanban List
-  KanbanTests:
+            UTTypeDescription: Tack List
+  TackTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [KanbanTests]
+    sources: [TackTests]
     dependencies:
-      - target: Kanban
-  KanbanUITests:
+      - target: Tack
+  TackUITests:
     type: bundle.ui-testing
     platform: macOS
     sources:
-      - KanbanUITests
-      - Kanban/Support/AccessibilityID.swift
+      - TackUITests
+      - Tack/Support/AccessibilityID.swift
     dependencies:
-      - target: Kanban
+      - target: Tack
 schemes:
-  Kanban:
+  Tack:
     build:
       targets:
-        Kanban: all
+        Tack: all
     run:
       config: Debug
     test:
       config: Debug
-      targets: [KanbanTests, KanbanUITests]
+      targets: [TackTests, TackUITests]

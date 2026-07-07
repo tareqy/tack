@@ -10,12 +10,12 @@ gen:
 	xcodegen generate
 
 build:
-	xcodebuild -project Kanban.xcodeproj -scheme Kanban -destination '$(DEST)' -derivedDataPath .build/DerivedData build
+	xcodebuild -project Tack.xcodeproj -scheme Tack -destination '$(DEST)' -derivedDataPath .build/DerivedData build
 
 unit:
-	xcodebuild -project Kanban.xcodeproj -scheme Kanban -destination '$(DEST)' -derivedDataPath .build/DerivedData -only-testing:KanbanTests test
+	xcodebuild -project Tack.xcodeproj -scheme Tack -destination '$(DEST)' -derivedDataPath .build/DerivedData -only-testing:TackTests test
 
 ui:
-	xcodebuild -project Kanban.xcodeproj -scheme Kanban -destination '$(DEST)' -derivedDataPath .build/DerivedData -only-testing:KanbanUITests -parallel-testing-enabled NO -resultBundlePath .build/results/ui-$$(date +%s).xcresult test
+	xcodebuild -project Tack.xcodeproj -scheme Tack -destination '$(DEST)' -derivedDataPath .build/DerivedData -only-testing:TackUITests -parallel-testing-enabled NO -resultBundlePath .build/results/ui-$$(date +%s).xcresult test
 
 test: unit ui

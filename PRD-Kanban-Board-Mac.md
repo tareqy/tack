@@ -1,4 +1,6 @@
 # Kanban Board — Native Mac App (Trello Replacement)  
+Product name: **Tack** (chosen at open-source publication, 2026-07-07; this historical document uses the working title "Kanban Board" throughout).
+
 ## Product Requirements Document (MVP)
 
 **Status:** Draft v1.1  
