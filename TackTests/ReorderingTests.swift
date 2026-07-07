@@ -112,4 +112,74 @@ struct ReorderingTests {
         let result = Reordering.normalized([])
         #expect(result.isEmpty)
     }
+
+    // MARK: - movedWithin(fromOffsets:toOffset:) — SwiftUI .onMove convention
+    // `toOffset` is the insertion offset in the PRE-REMOVAL array (what SwiftUI's
+    // .onMove hands its handler), NOT the element's index in the resulting array.
+
+    @Test("onMove: dragging the first row just below the second arrives as toOffset 2 and swaps them")
+    func onMoveDownByOne() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 0), toOffset: 2)
+        #expect(result == [b, a, c, d])
+    }
+
+    @Test("onMove: move first to end (toOffset == count)")
+    func onMoveFirstToEnd() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 0), toOffset: 4)
+        #expect(result == [b, c, d, a])
+    }
+
+    @Test("onMove: move last to front")
+    func onMoveLastToFront() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 3), toOffset: 0)
+        #expect(result == [d, a, b, c])
+    }
+
+    @Test("onMove: toOffset == source offset is identity")
+    func onMoveIdentitySameOffset() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 1), toOffset: 1)
+        #expect(result == ids)
+    }
+
+    @Test("onMove: toOffset == source offset + 1 is ALSO identity (pre-removal convention)")
+    func onMoveIdentityNextOffset() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 1), toOffset: 2)
+        #expect(result == ids)
+    }
+
+    @Test("onMove: multi-element IndexSet moves all, preserving their relative order")
+    func onMoveMultiElement() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet([0, 2]), toOffset: 4)
+        #expect(result == [b, d, a, c])
+    }
+
+    @Test("onMove: out-of-range source offsets are dropped, valid ones still move")
+    func onMoveInvalidSourceDropped() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet([0, 99]), toOffset: 4)
+        #expect(result == [b, c, d, a])
+    }
+
+    @Test("onMove: entirely out-of-range source set is identity")
+    func onMoveAllInvalidSourceIdentity() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 99), toOffset: 0)
+        #expect(result == ids)
+    }
+
+    @Test("onMove: negative toOffset clamps to start")
+    func onMoveNegativeDestinationClamps() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 3), toOffset: -5)
+        #expect(result == [d, a, b, c])
+    }
+
+    @Test("onMove: oversized toOffset clamps to end")
+    func onMoveOversizedDestinationClamps() {
+        let result = Reordering.movedWithin(ids, fromOffsets: IndexSet(integer: 0), toOffset: 99)
+        #expect(result == [b, c, d, a])
+    }
+
+    @Test("onMove: empty array is a no-op")
+    func onMoveEmptyArray() {
+        let result = Reordering.movedWithin([UUID](), fromOffsets: IndexSet(integer: 0), toOffset: 0)
+        #expect(result.isEmpty)
+    }
 }

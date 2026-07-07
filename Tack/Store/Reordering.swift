@@ -18,6 +18,27 @@ enum Reordering {
         return result
     }
 
+    /// SwiftUI `.onMove` convention (same as the stdlib overlay's `move(fromOffsets:toOffset:)`):
+    /// `fromOffsets` are offsets into the ORIGINAL array; `toOffset` is the insertion offset in
+    /// the ORIGINAL (pre-removal) array — so for a single element, `toOffset == from` and
+    /// `toOffset == from + 1` are both the identity. Total: out-of-range source offsets are
+    /// dropped, `toOffset` is clamped into `0...count`. Implemented by hand (not via the
+    /// Foundation/SwiftUI overlay method) to keep this file UI-framework-free; the semantics
+    /// are pinned by ReorderingTests.
+    static func movedWithin<Element>(_ items: [Element], fromOffsets source: IndexSet, toOffset destination: Int) -> [Element] {
+        let sourceOffsets = source.filter { items.indices.contains($0) } // ascending: IndexSet iterates in order
+        guard !sourceOffsets.isEmpty else { return items }
+        let clampedDestination = clamp(destination, lower: 0, upper: items.count)
+        // Insertion index in the post-removal array: the destination minus however many
+        // moving elements sat before it.
+        let insertionIndex = clampedDestination - sourceOffsets.filter { $0 < clampedDestination }.count
+        let moving = sourceOffsets.map { items[$0] }
+        let sourceSet = Set(sourceOffsets)
+        var result = items.enumerated().filter { !sourceSet.contains($0.offset) }.map(\.element)
+        result.insert(contentsOf: moving, at: insertionIndex)
+        return result
+    }
+
     /// Returns the array with the element at `index` removed. Out-of-range `index` is a no-op.
     static func removed<Element>(_ items: [Element], at index: Int) -> [Element] {
         guard items.indices.contains(index) else { return items }
