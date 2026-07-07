@@ -107,4 +107,24 @@ struct UndoRedoTests {
         let boards = try! env.context.fetch(FetchDescriptor<Board>())
         #expect(boards.isEmpty)
     }
+
+    @Test("undo of moveBoards restores the previous sidebar order; redo reapplies it")
+    func undoRedoMoveBoards() {
+        let env = TestContainer(withUndo: true)
+        let a = env.store.createBoard(name: "A", emoji: nil)
+        let b = env.store.createBoard(name: "B", emoji: nil)
+        let c = env.store.createBoard(name: "C", emoji: nil)
+        func orderedNames() -> [String] {
+            [a, b, c].sorted { $0.position < $1.position }.map(\.name)
+        }
+
+        env.store.moveBoards(fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        #expect(orderedNames() == ["C", "A", "B"])
+
+        env.undoManager?.undo()
+        #expect(orderedNames() == ["A", "B", "C"])
+
+        env.undoManager?.redo()
+        #expect(orderedNames() == ["C", "A", "B"])
+    }
 }

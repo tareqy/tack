@@ -76,4 +76,50 @@ struct BoardStoreBoardTests {
         let result = BoardStore.filterBoards([board], query: "zzz")
         #expect(result.isEmpty)
     }
+
+    @Test("moveBoards reorders and renumbers positions to contiguous 0..<n")
+    func moveBoardsReorders() {
+        let env = TestContainer()
+        let a = env.store.createBoard(name: "A", emoji: nil)
+        let b = env.store.createBoard(name: "B", emoji: nil)
+        let c = env.store.createBoard(name: "C", emoji: nil)
+
+        // .onMove convention: drag the first board to the end.
+        env.store.moveBoards(fromOffsets: IndexSet(integer: 0), toOffset: 3)
+
+        let ordered = [a, b, c].sorted { $0.position < $1.position }
+        #expect(ordered.map(\.name) == ["B", "C", "A"])
+        #expect(ordered.map(\.position) == [0, 1, 2])
+    }
+
+    @Test("identity moveBoards registers no undo step and changes nothing")
+    func moveBoardsIdentityNoUndo() {
+        let env = TestContainer(withUndo: true)
+        let a = env.store.createBoard(name: "A", emoji: nil)
+        let b = env.store.createBoard(name: "B", emoji: nil)
+        env.undoManager?.removeAllActions() // isolate the move from the creates
+
+        // toOffset == source offset + 1 is the identity under the .onMove convention.
+        env.store.moveBoards(fromOffsets: IndexSet(integer: 0), toOffset: 1)
+
+        #expect(env.undoManager?.canUndo == false)
+        #expect(a.position == 0)
+        #expect(b.position == 1)
+    }
+
+    @Test("moveBoards self-heals position gaps left by deleteBoard")
+    func moveBoardsHealsGaps() {
+        let env = TestContainer()
+        let a = env.store.createBoard(name: "A", emoji: nil) // position 0
+        let b = env.store.createBoard(name: "B", emoji: nil) // position 1
+        let c = env.store.createBoard(name: "C", emoji: nil) // position 2
+        env.store.deleteBoard(b) // deleteBoard does NOT renumber — positions are now 0, 2
+
+        // Sidebar (position-sorted) order is [A, C]; move C before A.
+        env.store.moveBoards(fromOffsets: IndexSet(integer: 1), toOffset: 0)
+
+        let remaining = [a, c].sorted { $0.position < $1.position }
+        #expect(remaining.map(\.name) == ["C", "A"])
+        #expect(remaining.map(\.position) == [0, 1])
+    }
 }

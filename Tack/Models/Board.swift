@@ -6,7 +6,7 @@ final class Board {
     @Attribute(.unique) var id: UUID
     var name: String
     var emoji: String?
-    var position: Int          // sidebar order == creation order for now (PRD: no board drag-reorder)
+    var position: Int          // sidebar order; user-reorderable via drag (B-06)
     var themeName: String      // "default" until Phase B
     var customThemeHex: String?
     var createdAt: Date

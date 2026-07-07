@@ -10,6 +10,7 @@ private protocol PositionedEntity: AnyObject {
     var position: Int { get set }
 }
 
+extension Board: PositionedEntity {}
 extension BoardList: PositionedEntity {}
 extension Card: PositionedEntity {}
 
@@ -136,6 +137,22 @@ final class BoardStore {
     static func filterBoards(_ boards: [Board], query: String) -> [Board] {
         guard !query.isEmpty else { return boards }
         return boards.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    /// B-06: reorders boards in sidebar (position-sorted) order using SwiftUI's `.onMove`
+    /// convention — `SidebarView` passes its handler arguments straight through, so no index
+    /// translation exists anywhere. Renumbers ALL boards to a contiguous 0..<n (self-healing
+    /// any gaps left by `deleteBoard`, which doesn't renumber). Identity moves return BEFORE
+    /// opening an undo group, so "drop it back where it was" never eats a ⌘Z step.
+    func moveBoards(fromOffsets source: IndexSet, toOffset destination: Int) {
+        let boards = fetchBoards().sorted { $0.position < $1.position }
+        let ids = boards.map(\.id)
+        let newOrder = Reordering.movedWithin(ids, fromOffsets: source, toOffset: destination)
+        guard newOrder != ids else { return }
+        withUndoGroup("Move Board") {
+            applyPositions(newOrder, to: boards)
+            save()
+        }
     }
 
     // MARK: - Lists
