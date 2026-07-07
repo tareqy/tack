@@ -302,6 +302,20 @@ final class KeyboardShortcutUITests: KanbanUITestCase {
         app.typeKey(.upArrow, modifierFlags: [])
         XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Return library books").isSelected },
                       "↑ from the first In Progress card should cross back to the last To Do card")
+
+        // Bare ←/→ (PRD C-10's remaining two directions): re-select Buy milk (To Do, index 0),
+        // then → moves to the same-index card in the next non-empty list — In Progress only has
+        // one card, so the index clamps to Write report — and ← returns to Buy milk.
+        buyMilk.click()
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").isSelected })
+
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Write report").isSelected },
+                      "→ from Buy milk should move selection to Write report (In Progress, clamped)")
+
+        app.typeKey(.leftArrow, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Buy milk").isSelected },
+                      "← from Write report should return selection to Buy milk")
     }
 
     /// Final review: bare ↓ with NO selection is the keyboard ENTRY point. Select Next Card is now

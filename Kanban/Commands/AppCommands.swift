@@ -127,6 +127,18 @@ struct AppCommands: Commands {
                 .keyboardShortcut(.downArrow, modifiers: [])
                 .disabled(boardActions == nil || isTextInputActive)
 
+            // PRD C-10 promises selection navigation in all four directions; left/right complete
+            // the pair started by up/down above (same gating, same `moveSelection` entry point —
+            // `SelectionNavigation.next` already implements `.left`/`.right`, same-row-index into
+            // the neighbouring non-empty list, clamped, skipping collapsed/empty lists).
+            Button("Select Card Left") { guardedMutation { boardActions?.moveSelection(.left) } }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(boardActions == nil || isTextInputActive)
+
+            Button("Select Card Right") { guardedMutation { boardActions?.moveSelection(.right) } }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(boardActions == nil || isTextInputActive)
+
             Divider()
 
             ForEach(1...9, id: \.self) { position in
