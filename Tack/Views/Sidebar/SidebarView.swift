@@ -15,6 +15,19 @@ struct SidebarView: View {
         BoardStore.filterBoards(boards, query: filterQuery)
     }
 
+    /// B-06: nil while the sidebar filter is active, which makes rows non-draggable — reordering
+    /// a filtered subset is ambiguous relative to the hidden boards. Deliberately the same
+    /// emptiness test `BoardStore.filterBoards` uses to return the full array, so "reorder
+    /// enabled" and "showing all boards" can never disagree. Passes SwiftUI's `.onMove`
+    /// arguments straight through — the index convention is handled in one place
+    /// (`Reordering.movedWithin(_:fromOffsets:toOffset:)`), nowhere in the view.
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard filterQuery.isEmpty else { return nil }
+        return { source, destination in
+            store.moveBoards(fromOffsets: source, toOffset: destination)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             TextField("Filter boards", text: $filterQuery)
@@ -23,12 +36,15 @@ struct SidebarView: View {
                 .padding(8)
                 .accessibilityIdentifier(AccessibilityID.sidebarFilterField)
 
-            List(filteredBoards, selection: $selection) { board in
-                BoardRowView(board: board)
-                    .contextMenu {
-                        Button("Rename") { renamingBoard = board }
-                        Button("Delete", role: .destructive) { boardPendingDeletion = board }
-                    }
+            List(selection: $selection) {
+                ForEach(filteredBoards) { board in
+                    BoardRowView(board: board)
+                        .contextMenu {
+                            Button("Rename") { renamingBoard = board }
+                            Button("Delete", role: .destructive) { boardPendingDeletion = board }
+                        }
+                }
+                .onMove(perform: moveHandler)
             }
             .listStyle(.sidebar)
         }
