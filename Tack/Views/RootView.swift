@@ -263,7 +263,10 @@ struct RootView: View {
     /// fail to present (verify the hop is needed by hand during implementation; record the result
     /// in the spec).
     private func handlePickedImportFile(_ result: Result<URL, Error>) {
-        guard case .success(let url) = result else { return }   // panel cancel/error: no-op
+        // A genuine panel `.failure` (rare — e.g. a permissions error surfaced by the panel
+        // itself) is deliberately silent here alongside a plain cancel; if that's ever revisited,
+        // it would need its own alert, since today only the read/decode/save paths below present one.
+        guard case .success(let url) = result else { return }
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         do {
@@ -279,9 +282,16 @@ struct RootView: View {
                 pendingImport = PendingImport(envelope: envelope, filename: filename)
             }
         } catch let error as ImportError {
-            importError = error
+            // Same presentation-timing hazard class as the dialog above: flipping the alert's
+            // isPresented same-tick with the fileImporter's dismissal can silently fail to
+            // present, so the error is parked on the next main-queue tick too.
+            DispatchQueue.main.async {
+                importError = error
+            }
         } catch {
-            importError = .unreadable(detail: error.localizedDescription)
+            DispatchQueue.main.async {
+                importError = .unreadable(detail: error.localizedDescription)
+            }
         }
     }
 
@@ -318,8 +328,9 @@ struct RootView: View {
             importError = error
             publishImportMarker("error|\(error.caseName)")
         } catch {
-            importError = .saveFailed(detail: error.localizedDescription)
-            publishImportMarker("error|saveFailed")
+            let wrapped = ImportError.saveFailed(detail: error.localizedDescription)
+            importError = wrapped
+            publishImportMarker("error|\(wrapped.caseName)")
         }
     }
 
@@ -362,8 +373,9 @@ struct RootView: View {
             importError = error
             publishImportMarker("error|\(error.caseName)")
         } catch {
-            importError = .unreadable(detail: error.localizedDescription)
-            publishImportMarker("error|unreadable")
+            let wrapped = ImportError.unreadable(detail: error.localizedDescription)
+            importError = wrapped
+            publishImportMarker("error|\(wrapped.caseName)")
         }
     }
 

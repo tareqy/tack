@@ -111,7 +111,8 @@ final class ImportUITests: TackUITestCase {
                        "stable token, never localized alert copy")
         // The production error alert also presented — dismiss it, then confirm nothing changed.
         let ok = hittableButton("OK")
-        if ok.waitForExistence(timeout: 5) { ok.click() }
+        XCTAssertTrue(ok.waitForExistence(timeout: timeout), "the Import Failed alert should present")
+        ok.click()
         XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Groceries")].waitForExistence(timeout: timeout))
         XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Work")].exists)
     }
@@ -158,8 +159,8 @@ final class ImportUITests: TackUITestCase {
         // control underneath) does NOT resign the field editor — verified on this host, the menu
         // items stayed disabled afterward. A sidebar board row IS backed by an AppKit NSTableView
         // (List selection), whose click handling reliably calls makeFirstResponder(tableView),
-        // which does resign the TextField. Same row-click pattern BoardCRUDUITests/
-        // SidebarReorderUITests use to interact with these boards.
+        // which does resign the TextField. Same row-click pattern CardCRUDUITests/
+        // DragAndDropUITests/PersistenceUITests/ThemeUITests use to interact with these boards.
         let workRow = app.descendants(matching: .any)[AccessibilityID.board("Work")]
         XCTAssertTrue(workRow.waitForExistence(timeout: timeout))
         workRow.click()
