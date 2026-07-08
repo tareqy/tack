@@ -53,6 +53,9 @@ struct InlineEditableText: View {
     var body: some View {
         Group {
             if isEditing {
+                // A visible "you are editing" treatment: soft well + accent hairline. Horizontal
+                // only (no vertical padding, negative outer compensation) so the text doesn't
+                // shift and the row height feeding DropMath's measurement doesn't change.
                 TextField("", text: $draft)
                     .textFieldStyle(.plain)
                     .font(font)
@@ -61,10 +64,17 @@ struct InlineEditableText: View {
                     .onSubmit(commit)
                     .onExitCommand(perform: cancel)
                     .onAppear { isFocused = true }
+                    .padding(.horizontal, 4)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+                    // Non-hit-testing so caret clicks reach the field (see CardDetailView's hairline).
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.accentColor.opacity(0.6)).allowsHitTesting(false))
+                    .padding(.horizontal, -4)
                     .accessibilityIdentifier(accessibilityID)
             } else {
                 Text(text)
                     .font(font)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .contentShape(Rectangle())
                     .onTapGesture(count: beginEditOn == .doubleClick ? 2 : 1, perform: beginEditing)
                     .accessibilityIdentifier(accessibilityID)

@@ -22,7 +22,7 @@ final class KeyboardShortcutUITests: TackUITestCase {
         XCTAssertTrue(menuItem("New Card").waitForExistence(timeout: timeout), "File ▸ New Card should exist")
         XCTAssertTrue(menuItem("New Card").isEnabled, "New Card enabled with a board shown")
         XCTAssertTrue(menuItem("New List").isEnabled, "New List enabled with a board shown")
-        XCTAssertTrue(menuItem("New Board").isEnabled, "New Board always enabled")
+        XCTAssertTrue(menuItem("New Board…").isEnabled, "New Board always enabled")
         closeMenu()
 
         // Edit: system Undo present; Delete Card present + disabled (no selection yet).
@@ -75,7 +75,7 @@ final class KeyboardShortcutUITests: TackUITestCase {
         XCTAssertTrue(menuItem("New Card").waitForExistence(timeout: timeout))
         XCTAssertFalse(menuItem("New Card").isEnabled, "New Card disabled with no board")
         XCTAssertFalse(menuItem("New List").isEnabled, "New List disabled with no board")
-        XCTAssertTrue(menuItem("New Board").isEnabled, "New Board still enabled with no board")
+        XCTAssertTrue(menuItem("New Board…").isEnabled, "New Board still enabled with no board")
         closeMenu()
     }
 
@@ -114,7 +114,7 @@ final class KeyboardShortcutUITests: TackUITestCase {
         launch(fixture: "standard")
         XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
         openMenu("View")
-        XCTAssertTrue(menuItem("Toggle Sidebar").waitForExistence(timeout: timeout),
+        XCTAssertTrue(menuItem("Show/Hide Sidebar").waitForExistence(timeout: timeout),
                       "View menu should contain a sidebar-toggle item")
         closeMenu()
     }

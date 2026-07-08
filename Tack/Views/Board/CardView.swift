@@ -34,8 +34,23 @@ struct CardView: View {
     @State private var isDropTargeted = false
     @State private var beginRename = false
     @State private var measuredRowHeight: CGFloat = 44
+    @State private var isHovering = false
 
     private var isSelected: Bool { selectedCardID == card.id }
+
+    /// Selected cards trade the hairline for a calm accent border; unselected cards keep the
+    /// separator hairline that lifts them off the column.
+    private var borderColor: Color {
+        isSelected ? Color.accentColor.opacity(0.8) : .surfaceHairline
+    }
+
+    /// One wash layer serves both states: a soft accent tint marks selection (native content
+    /// selection is a tint, not a heavy outline), a fainter primary wash acknowledges hover.
+    private var selectionWashColor: Color {
+        if isSelected { return Color.accentColor.opacity(0.10) }
+        if isHovering { return Color.primary.opacity(0.045) }
+        return .clear
+    }
 
     /// This card's labels, ordered by `LabelColor.allCases` (not insertion order) — see
     /// `AccessibilityID.cardLabels`.
@@ -47,7 +62,7 @@ struct CardView: View {
     private var hasMetaLine: Bool { !sortedLabelColors.isEmpty || card.dueDate != nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             InlineEditableText(
                 card.title,
                 beginEditOn: .doubleClick,
@@ -63,14 +78,27 @@ struct CardView: View {
             if hasMetaLine {
                 metaLine
                     .padding(.horizontal, 10)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 12)
             }
         }
-        .background(Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+        // Raised card surface: adaptive fill + hairline + a whisper of shadow so cards read as
+        // content sitting ON the column, not wells cut into it (the old `secondary.opacity(0.18)`
+        // rendered DARKER than the column in light mode — inverted figure/ground).
+        .background {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.cardSurface)
+                .shadow(color: .black.opacity(0.06), radius: 1, y: 0.5)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.accentColor, lineWidth: 2)
-                .opacity(isSelected ? 1 : 0)
+                .strokeBorder(borderColor, lineWidth: isSelected ? 1.5 : 1)
+        }
+        // Hover + selection tint share one quiet wash layer; hover is the standard macOS cue that
+        // this flat rectangle is clickable/draggable.
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(selectionWashColor)
+                .allowsHitTesting(false)
         }
         .overlay(alignment: .top) {
             InsertionIndicator()
@@ -78,15 +106,16 @@ struct CardView: View {
         }
         .background(rowHeightMeasurer)
         .contentShape(Rectangle())
-        // Single click selects; double-click on the BODY opens the detail sheet. Double-click on
+        .onHover { isHovering = $0 }
+        // Finder model: the FIRST click selects immediately (no double-click-interval lag), the
+        // second click opens the detail sheet — opening implying selection is correct, so the two
+        // gestures compose `.simultaneously` rather than the old `.exclusively` (which made every
+        // selection wait out the double-click interval before showing its ring). Double-click on
         // the TITLE still lands on its own `.doubleClick` gesture (a descendant, which SwiftUI
-        // prioritizes over this ancestor one) and renames instead — see `InlineEditableText`. The
-        // two counts are combined via `.exclusively(before:)` (not two stacked `.onTapGesture`
-        // modifiers, whose same-view interaction is otherwise unspecified) so a real double-click
-        // NEVER also fires the single-tap select.
+        // prioritizes over this ancestor one) and renames instead — see `InlineEditableText`.
         .gesture(
             TapGesture(count: 2).onEnded { selectedDetailCard = card }
-                .exclusively(before: TapGesture(count: 1).onEnded { selectedCardID = card.id })
+                .simultaneously(with: TapGesture(count: 1).onEnded { selectedCardID = card.id })
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.card(card.title))
@@ -119,6 +148,9 @@ struct CardView: View {
                 ForEach(sortedLabelColors, id: \.self) { color in
                     Circle()
                         .fill(color.swatchColor)
+                        // Hairline ring so low-contrast fills (yellow measured 1.36:1 on white in
+                        // the M10 audit) stay legible on the opaque light-mode card surface.
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5))
                         .frame(width: 8, height: 8)
                 }
             }

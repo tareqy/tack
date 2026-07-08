@@ -28,7 +28,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .option])
                 .disabled(boardActions == nil)
 
-            Button("New Board") { guardedMutation { boardSelection?.newBoard() } }
+            // Ellipsis: opens the naming sheet — further input before anything is created (HIG).
+            Button("New Board…") { guardedMutation { boardSelection?.newBoard() } }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(boardSelection == nil)
 
@@ -96,7 +97,9 @@ struct AppCommands: Commands {
         // toolbar button — confirmed via an accessibility dump), so we contribute a discoverable
         // "Toggle Sidebar" that drives the underlying NSSplitViewController's standard action.
         CommandGroup(after: .sidebar) {
-            Button("Toggle Sidebar") {
+            // "Show/Hide" (state-revealing vocabulary) rather than the programmer-y "Toggle";
+            // static because the split view's visibility isn't observable from a Commands value.
+            Button("Show/Hide Sidebar") {
                 NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
             }
             .keyboardShortcut("s", modifiers: [.command, .control])

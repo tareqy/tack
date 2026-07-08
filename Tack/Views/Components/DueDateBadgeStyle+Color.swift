@@ -23,7 +23,14 @@ extension BadgeRole {
     }
 
     var foregroundColor: Color {
-        color
+        switch self {
+        // `.gray` text on a gray tint composited over the card surface measured well under the
+        // 4.5:1 small-text minimum — the one role the M10 pass missed. `secondaryLabelColor` is
+        // the appearance-tuned label color for exactly this "present but not urgent" register;
+        // the capsule keeps the gray tint so neutral still reads as less urgent than the rest.
+        case .neutral: Color(nsColor: .secondaryLabelColor)
+        default: color
+        }
     }
 
     private var color: Color {

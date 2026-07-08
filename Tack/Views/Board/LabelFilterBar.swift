@@ -10,44 +10,34 @@ struct LabelFilterBar: View {
     @Binding var active: Set<LabelColor>
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(LabelColor.allCases, id: \.self) { color in
-                chip(for: color)
+        // The surface hugs its chips (the old full-width slab read as a long, mostly-empty bar)
+        // and shares the columns' inset/radius tokens instead of introducing a third panel style.
+        HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                ForEach(LabelColor.allCases, id: \.self) { color in
+                    chip(for: color)
+                }
+                if !active.isEmpty {
+                    Button("Clear") { active = [] }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .accessibilityIdentifier(AccessibilityID.filterClear)
+                }
             }
-            if !active.isEmpty {
-                Button("Clear") { active = [] }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityIdentifier(AccessibilityID.filterClear)
-            }
+            .padding(8)
+            .background(Color.columnSurface, in: RoundedRectangle(cornerRadius: 10))
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    /// Same chip shape as `LabelPicker`'s (capsule + checkmark, `.black` foreground when filled) —
-    /// including its M10 dark-mode contrast fix, which was measured against all 8 colors in both
-    /// appearances and applies unchanged here.
+    /// The shared `LabelChipLabel` look (one definition with `LabelPicker`, so the capsule
+    /// geometry and the M10-audited black-on-fill contrast can never drift between the two).
     private func chip(for color: LabelColor) -> some View {
         let isSelected = active.contains(color)
         return Button {
             toggle(color)
         } label: {
-            HStack(spacing: 4) {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.caption2.bold())
-                }
-                Text(color.rawValue.capitalized)
-                    .font(.caption)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(isSelected ? color.swatchColor.opacity(0.85) : Color.clear))
-            .overlay(Capsule().strokeBorder(color.swatchColor, lineWidth: isSelected ? 0 : 1.5))
-            .foregroundStyle(isSelected ? Color.black : Color.primary)
+            LabelChipLabel(color: color, isSelected: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(AccessibilityID.filterChip(color.rawValue))

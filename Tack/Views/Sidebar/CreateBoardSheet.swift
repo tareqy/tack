@@ -38,7 +38,10 @@ struct CreateBoardSheet: View {
 
             HStack {
                 Spacer()
+                // Esc must cancel any sheet (HIG); unlike alerts, a sheet's `.cancel`-role button
+                // gets no automatic Esc binding — the card-detail sheet already does this.
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Button("Create") {
                     let created = store.createBoard(name: trimmedName, emoji: emoji.isEmpty ? nil : emoji)
                     onCreated(created)

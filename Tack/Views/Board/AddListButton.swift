@@ -21,13 +21,20 @@ struct AddListButton: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if isEditing {
+                // Same "the field looks like what it creates" treatment as the add-card row.
                 TextField("List name", text: $draft)
                     .textFieldStyle(.plain)
+                    .font(.headline)
                     .focused($isFocused)
                     .reportsTextInputFocus()
                     .onSubmit(commit)
                     .onExitCommand(perform: cancel)
                     .onAppear { isFocused = true }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: 6))
+                    // Non-hit-testing so caret clicks reach the field (see CardDetailView's hairline).
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.surfaceHairline).allowsHitTesting(false))
                     .accessibilityIdentifier(AccessibilityID.newListField)
             } else {
                 Button {
@@ -35,16 +42,22 @@ struct AddListButton: View {
                     isEditing = true
                 } label: {
                     Label("Add List", systemImage: "plus")
+                        .font(.callout)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HoverHighlightButtonStyle())
                 .accessibilityIdentifier(AccessibilityID.addListButton)
             }
         }
         .padding(8)
         .frame(width: columnWidth, alignment: .topLeading)
-        .frame(maxHeight: .infinity)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+        // `.top`, not the default `.center`: the ghost column's affordance must sit on the same
+        // line as the real columns' headers, not float mid-column.
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.columnSurface.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
         .onChange(of: openEditorToken) { _, _ in
             draft = ""
             isEditing = true

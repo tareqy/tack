@@ -107,12 +107,11 @@ struct RootView: View {
                 // M8: the per-board Theme button (its popover lives inside `ThemeButton`).
                 // Contributed HERE, not from BoardView's own body, for the exact same
                 // empirically-established reason as the "New Board" item below — parameterized
-                // with whichever board `detailContent` is currently showing, so it's simply
-                // absent when no board is selected.
+                // with whichever board `detailContent` is currently showing. Always PRESENT and
+                // merely disabled with no board (HIG: stable toolbar geometry — the old
+                // conditional made the '+' button jump as selection changed).
                 ToolbarItem(placement: .automatic) {
-                    if let selectedBoard {
-                        ThemeButton(board: selectedBoard, store: store)
-                    }
+                    ThemeButton(board: selectedBoard, store: store)
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -120,6 +119,7 @@ struct RootView: View {
                     } label: {
                         Label("New Board", systemImage: "plus")
                     }
+                    .help("New board")
                     .accessibilityIdentifier(AccessibilityID.newBoardButton)
                 }
             }
@@ -307,9 +307,15 @@ struct RootView: View {
         }
         let listCount = importedBoards.reduce(0) { $0 + $1.lists.count }
         let cardCount = importedBoards.reduce(0) { $0 + $1.lists.reduce(0) { $0 + $1.cards.count } }
-        return "“\(pending.filename)” contains \(importedBoards.count) board(s) (\(listCount) list(s), \(cardCount) card(s)). "
-            + "“Add to Existing” keeps your current \(boards.count) board(s) and adds the imported ones after them. "
-            + "“Replace All Boards” deletes your current board(s) first — replacing cannot be undone."
+        return "“\(pending.filename)” contains \(counted(importedBoards.count, "board")) (\(counted(listCount, "list")), \(counted(cardCount, "card"))). "
+            + "“Add to Existing” keeps your current \(counted(boards.count, "board")) and adds the imported ones after them. "
+            + "“Replace All Boards” deletes your current boards first — replacing cannot be undone."
+    }
+
+    /// "1 board" / "3 boards" — Apple style avoids the "(s)" shorthand, and this message sits
+    /// directly under a title that already pluralizes properly.
+    private func counted(_ count: Int, _ noun: String) -> String {
+        "\(count) \(noun)\(count == 1 ? "" : "s")"
     }
 
     /// Shared completion for the dialog buttons AND the --import-from test hook, so both paths
@@ -429,12 +435,18 @@ struct RootView: View {
         if boards.isEmpty {
             EmptyStateView(onCreateBoard: { isPresentingCreateBoard = true },
                            onImportBoards: { isPresentingImporter = true })
+                .navigationTitle("Tack")
         } else if let selectedBoard {
             BoardView(board: selectedBoard, store: store)
         } else {
-            Text("Select a board")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Same native empty-state dressing as the zero-boards state next door — a bare
+            // secondary string beside a fully-dressed sibling read as unfinished.
+            ContentUnavailableView(
+                "No Board Selected",
+                systemImage: "square.grid.2x2",
+                description: Text("Choose a board in the sidebar.")
+            )
+            .navigationTitle("Tack")
         }
     }
 

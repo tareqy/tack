@@ -13,9 +13,16 @@ struct DatabaseErrorView: View {
                 .foregroundStyle(.secondary)
             Text("Tack couldn't open its database")
                 .font(.title2.weight(.semibold))
-            Text(message)
+            // The human sentence leads (quit-and-retry IS the intended recovery path); the raw
+            // error detail is still there for support, demoted below it.
+            Text("Quit and reopen Tack to try again. Your boards are stored safely on disk.")
                 .font(.body)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Quit Tack") { NSApplication.shared.terminate(nil) }

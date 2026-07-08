@@ -22,32 +22,15 @@ struct LabelPicker: View {
         }
     }
 
+    /// The shared `LabelChipLabel` look — one definition with `LabelFilterBar`. Its `.black`
+    /// selected foreground is the M10 dark-mode audit result (see `LabelChipLabel`'s doc comment),
+    /// now measured-true again because the fill is full-opacity.
     private func chip(for color: LabelColor) -> some View {
         let isSelected = selected.contains(color)
         return Button {
             toggle(color)
         } label: {
-            HStack(spacing: 4) {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.caption2.bold())
-                }
-                Text(color.rawValue.capitalized)
-                    .font(.caption)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Capsule().fill(isSelected ? color.swatchColor.opacity(0.85) : Color.clear))
-            .overlay(Capsule().strokeBorder(color.swatchColor, lineWidth: isSelected ? 0 : 1.5))
-            // M10 dark-mode audit: was `Color.white` for the selected state — measured (via
-            // screenshot pixel sampling of every one of the 8 label colors, in BOTH appearances)
-            // at WCAG contrast ratios as low as 1.36:1 (yellow, light mode) against white, i.e.
-            // badly failing the 4.5:1 text minimum for EVERY color in EVERY appearance. `.black`
-            // passes 4.5:1 for all 8 colors in both light and dark mode (lowest measured: 5.63:1),
-            // so — unlike the due-date badges, which need genuinely different per-appearance
-            // colors — a single fixed swap is correct here without any appearance branching.
-            .foregroundStyle(isSelected ? Color.black : Color.primary)
+            LabelChipLabel(color: color, isSelected: isSelected, fillsWidth: true)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(AccessibilityID.labelChip(color.rawValue))

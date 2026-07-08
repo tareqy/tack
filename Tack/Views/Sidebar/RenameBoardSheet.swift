@@ -30,7 +30,9 @@ struct RenameBoardSheet: View {
 
             HStack {
                 Spacer()
+                // Esc must cancel any sheet (HIG) — same one-liner as CreateBoardSheet.
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Button("Rename") {
                     store.renameBoard(board, to: trimmedName)
                     dismiss()

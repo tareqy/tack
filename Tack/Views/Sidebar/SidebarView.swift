@@ -40,7 +40,7 @@ struct SidebarView: View {
                 ForEach(filteredBoards) { board in
                     BoardRowView(board: board)
                         .contextMenu {
-                            Button("Rename") { renamingBoard = board }
+                            Button("Rename…") { renamingBoard = board }
                             Button("Delete", role: .destructive) { boardPendingDeletion = board }
                         }
                 }
@@ -65,12 +65,16 @@ struct SidebarView: View {
             Button("Cancel", role: .cancel) {
                 boardPendingDeletion = nil
             }
+        } message: {
+            // Board delete detaches the undo manager and clears the stack (see
+            // `BoardStore.deleteBoard`) — the one thing this dialog must say.
+            Text("This deletes all of its lists and cards. You can't undo this.")
         }
     }
 
     private var deleteDialogTitle: String {
         guard let board = boardPendingDeletion else { return "" }
-        return "Delete \"\(board.name)\"? Its lists and cards will be deleted."
+        return "Delete “\(board.name)”?"
     }
 
     private var isPresentingDeleteDialog: Binding<Bool> {

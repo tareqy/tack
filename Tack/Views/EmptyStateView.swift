@@ -9,22 +9,18 @@ struct EmptyStateView: View {
     let onImportBoards: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "square.grid.2x2")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("No boards yet")
-                .font(.title2)
-                .bold()
+        // The system empty-state component (macOS 14+): standard typography, spacing, and
+        // dark-mode behavior for free, with the actions grouped apart from the text block.
+        ContentUnavailableView {
+            Label("No Boards", systemImage: "square.grid.2x2")
+        } description: {
             Text("Create a board to start organizing your work.")
-                .foregroundStyle(.secondary)
-            Button("Create your first board", action: onCreateBoard)
+        } actions: {
+            Button("Create Board…", action: onCreateBoard)
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier(AccessibilityID.emptyStateCreateBoardButton)
             Button("Import from Backup…", action: onImportBoards)
                 .accessibilityIdentifier(AccessibilityID.emptyStateImportButton)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 }

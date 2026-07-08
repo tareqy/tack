@@ -15,7 +15,9 @@ import SwiftUI
 /// The brief's optional `ColorPicker` is deliberately skipped: the hex field is the testable path,
 /// and per the brief's own escape hatch the picker is a nice-to-have only.
 struct ThemeButton: View {
-    let board: Board
+    /// The board shown in the detail pane, or nil when none is selected — the toolbar item stays
+    /// PRESENT either way (HIG: stable toolbar geometry) and merely disables on nil.
+    let board: Board?
     let store: BoardStore
 
     @State private var isPresented = false
@@ -24,28 +26,33 @@ struct ThemeButton: View {
 
     var body: some View {
         Button {
+            guard let board else { return }
             hexDraft = board.customThemeHex ?? ""
             showsHexError = false
             isPresented = true
         } label: {
             Label("Theme", systemImage: "paintpalette")
         }
+        .disabled(board == nil)
+        .help("Change board theme")
         .accessibilityIdentifier(AccessibilityID.themeButton)
         .popover(isPresented: $isPresented) {
-            popoverContent
+            if let board {
+                popoverContent(for: board)
+            }
         }
     }
 
-    private var popoverContent: some View {
+    private func popoverContent(for board: Board) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Theme")
                 .font(.headline)
 
-            swatchGrid
+            swatchGrid(for: board)
 
             Divider()
 
-            customHexSection
+            customHexSection(for: board)
         }
         .padding(16)
         .frame(width: 260)
@@ -53,17 +60,17 @@ struct ThemeButton: View {
 
     // MARK: - Presets
 
-    private var swatchGrid: some View {
+    private func swatchGrid(for board: Board) -> some View {
         let columns = [GridItem(.adaptive(minimum: 70), spacing: 8)]
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             ForEach(BoardTheme.allCases, id: \.self) { theme in
-                swatch(for: theme)
+                swatch(for: theme, board: board)
             }
         }
     }
 
-    private func swatch(for theme: BoardTheme) -> some View {
-        let selected = isSelected(theme)
+    private func swatch(for theme: BoardTheme, board: Board) -> some View {
+        let selected = isSelected(theme, board: board)
         return Button {
             store.setTheme(board, themeName: theme.rawValue, customHex: nil)
         } label: {
@@ -97,14 +104,14 @@ struct ThemeButton: View {
 
     /// A swatch shows selected only when it is the board's EFFECTIVE preset — i.e. no custom hex
     /// is currently overriding it (per `ThemeResolution`'s precedence).
-    private func isSelected(_ theme: BoardTheme) -> Bool {
+    private func isSelected(_ theme: BoardTheme, board: Board) -> Bool {
         guard board.customThemeHex == nil else { return false }
         return (BoardTheme(rawValue: board.themeName) ?? .default) == theme
     }
 
     // MARK: - Custom hex
 
-    private var customHexSection: some View {
+    private func customHexSection(for board: Board) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Custom")
                 .font(.caption)
@@ -113,7 +120,7 @@ struct ThemeButton: View {
             TextField("#RRGGBB", text: $hexDraft)
                 .textFieldStyle(.roundedBorder)
                 .reportsTextInputFocus()
-                .onSubmit(commitHex)
+                .onSubmit { commitHex(for: board) }
                 .accessibilityIdentifier(AccessibilityID.themeHexField)
 
             if showsHexError {
@@ -128,7 +135,7 @@ struct ThemeButton: View {
     /// crash. `themeName` is passed back unchanged (the board's current value): committing a
     /// custom hex must not silently reassign which preset a later "choose a swatch" action starts
     /// from.
-    private func commitHex() {
+    private func commitHex(for board: Board) {
         guard HexColor.parse(hexDraft) != nil else {
             showsHexError = true
             return

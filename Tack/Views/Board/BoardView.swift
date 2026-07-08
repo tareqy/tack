@@ -41,13 +41,20 @@ struct BoardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+                .padding(.horizontal, 16)
             if isFilterBarVisible {
                 LabelFilterBar(active: $activeLabelFilter)
+                    .padding(.horizontal, 16)
             }
             columnsScrollView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding()
+        // Vertical inset only: the horizontal inset moved into the scroll view's content margins
+        // so columns scroll edge-to-edge under it instead of clipping at an invisible boundary.
+        .padding(.vertical, 16)
+        // HIG: the window title reflects the shown content (feeds the Window menu, Mission
+        // Control, and window cycling); RootView resets it to "Tack" on the no-board branches.
+        .navigationTitle(board.name)
         // M8: the resolved board theme washes the whole surface; `.padding()` above reports the
         // full offered size back up (it just insets its child), so attaching `.background` here —
         // AFTER frame+padding — covers the entire board area edge-to-edge rather than only the
@@ -109,13 +116,22 @@ struct BoardView: View {
     }
 
     private var header: some View {
-        Text("\(board.emoji ?? "🗂️") \(board.name)")
-            .font(.largeTitle)
-            // `.combine` (not `.contain`): same trap as the placeholder this view replaces — see
-            // `RootView` for the full write-up of why `board-detail` must stay a `.combine` leaf,
-            // not a `.contain` ancestor of the columns below it.
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier(AccessibilityID.boardDetail)
+        // Emoji and name as separate runs: interpolated into one largeTitle string, the emoji
+        // rendered at full 26pt and outweighed the board name; here the name carries the weight
+        // and the emoji sits a step down, on the shared baseline.
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(board.emoji ?? "🗂️")
+                .font(.title2)
+            Text(board.name)
+                .font(.largeTitle.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        // `.combine` (not `.contain`): same trap as the placeholder this view replaces — see
+        // `RootView` for the full write-up of why `board-detail` must stay a `.combine` leaf,
+        // not a `.contain` ancestor of the columns below it.
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(AccessibilityID.boardDetail)
     }
 
     private var columnsScrollView: some View {
@@ -134,10 +150,15 @@ struct BoardView: View {
                         activeLabelFilter: activeLabelFilter
                     )
                 }
+                if board.sortedLists.isEmpty {
+                    Text("This board is empty — add a list to get started.")
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                }
                 AddListButton(board: board, store: store, columnWidth: Self.columnWidth, openEditorToken: addListToken)
             }
-            .padding(.vertical, 4)
         }
+        .contentMargins(.horizontal, 16, for: .scrollContent)
     }
 
     // MARK: - M8: theme
@@ -145,7 +166,10 @@ struct BoardView: View {
     private var themeBackground: Color {
         switch ThemeResolution.resolve(themeName: board.themeName, customHex: board.customThemeHex) {
         case .preset(let theme): theme.backgroundColor
-        case .custom(let color): color
+        // Custom hex is a WASH like every preset, not an opaque appearance-fixed paint: a literal
+        // pale hex in dark mode (or dark hex in light mode) was the app's one path to illegible
+        // primary text. The stored hex and the `boardThemeValue` marker are untouched.
+        case .custom(let color): color.opacity(0.15)
         }
     }
 

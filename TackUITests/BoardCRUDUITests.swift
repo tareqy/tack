@@ -97,7 +97,7 @@ final class BoardCRUDUITests: TackUITestCase {
         let workRow = boardRow("Work")
         XCTAssertTrue(workRow.waitForExistence(timeout: timeout))
         workRow.rightClick()
-        contextMenuItem("Rename").click()
+        contextMenuItem("Rename…").click()
 
         XCTAssertTrue(renameBoardField.waitForExistence(timeout: timeout))
         renameBoardField.click()

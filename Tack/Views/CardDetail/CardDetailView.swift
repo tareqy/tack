@@ -48,12 +48,23 @@ struct CardDetailView: View {
                         Text("Description")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        // Native editable-text-area dressing (an NSTextView look: text background
+                        // + separator hairline) — the old secondary wash read as a disabled
+                        // control, especially in dark mode. NO `.scrollContentBackground(.hidden)`:
+                        // SwiftUI's macOS TextEditor is already transparent (the old wash showed
+                        // through without it), and adding it made the whole editor report
+                        // AX-Disabled under XCUITest, killing keyboard-focus synthesis (caught by
+                        // testEditDescriptionSavesAndPersists).
                         TextEditor(text: $details)
                             .font(.body)
                             .reportsTextInputFocus()
                             .frame(minHeight: 120)
                             .padding(4)
-                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                            // Hairline must NOT hit-test: a SwiftUI overlay above an AppKit-backed
+                            // editor intercepts the click that gives the NSTextView keyboard focus
+                            // (caught by testEditDescriptionSavesAndPersists).
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false))
                             .accessibilityIdentifier(AccessibilityID.cardDetailDescriptionField)
                     }
 
@@ -95,7 +106,10 @@ struct CardDetailView: View {
             }
             // Deliberately NOT `.defaultAction` (plain Return): the description `TextEditor` must
             // keep plain Return as "insert a newline", so only ⌘⏎ commits (PRD convention).
+            // `.borderedProminent` restores the accent-filled primary-action look that skipping
+            // `.defaultAction` otherwise forfeits (HIG: one clearly-marked default button).
             .keyboardShortcut(.return, modifiers: .command)
+            .buttonStyle(.borderedProminent)
         }
     }
 

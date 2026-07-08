@@ -56,6 +56,10 @@ struct ListColumnView: View {
     @FocusState private var isAddCardFocused: Bool
     @State private var isFooterTargeted = false
     @State private var isPillTargeted = false
+    @State private var isPillHovering = false
+    /// Context-menu "Rename List" trigger, forwarded into the header's `InlineEditableText` —
+    /// the exact `beginEditSignal` pattern `CardView`'s "Rename Card" already uses.
+    @State private var beginRenameList = false
 
     // MARK: - M11: label filter (rendering only — see the type doc's DROP MATH note below)
 
@@ -101,6 +105,31 @@ struct ListColumnView: View {
             addCardListID = nil
             if !list.isCollapsed { startAddingCard() }
         }
+        // Attached to the always-present outer view (not `expandedColumn`) so BOTH branches can
+        // present it — the collapsed pill's context menu offers Delete List too.
+        .confirmationDialog(
+            "Delete “\(list.name)”?",
+            isPresented: $isPresentingDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                store.deleteList(list)
+            }
+            .accessibilityIdentifier(AccessibilityID.deleteListConfirm)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(deleteListMessage)
+        }
+    }
+
+    /// HIG dialog anatomy: short question in the title, consequence in the message — with real
+    /// pluralization instead of "Its 1 cards will be deleted."
+    private var deleteListMessage: String {
+        switch list.cards.count {
+        case 0: "This list is empty."
+        case 1: "This also deletes its 1 card."
+        default: "This also deletes its \(list.cards.count) cards."
+        }
     }
 
     /// Zero-sized, non-hit-testing marker whose `.accessibilityRepresentation` `Text` reliably
@@ -127,9 +156,14 @@ struct ListColumnView: View {
         .padding(8)
         .frame(width: columnWidth, alignment: .topLeading)
         .frame(maxHeight: .infinity)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(alignment: .leading) {
-            insertionIndicator
+        .background(Color.columnSurface, in: RoundedRectangle(cornerRadius: 10))
+        // Whole-column targeted stroke (matching the collapsed pill's treatment) instead of the
+        // old leading-edge bar: `isTargeted` can't know which side DropMath will resolve, so a
+        // left-edge line previewed the WRONG side for right-half drops. "This column is the
+        // reference" is the honest feedback, and expanded/collapsed become consistent.
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
                 .opacity(targetedListID == list.id ? 1 : 0)
         }
         .contentShape(Rectangle())
@@ -147,17 +181,6 @@ struct ListColumnView: View {
         } isTargeted: { isTargeted in
             setTargeted(isTargeted)
         }
-        .confirmationDialog(
-            "Delete \"\(list.name)\"? Its \(list.cards.count) cards will be deleted.",
-            isPresented: $isPresentingDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                store.deleteList(list)
-            }
-            .accessibilityIdentifier(AccessibilityID.deleteListConfirm)
-            Button("Cancel", role: .cancel) {}
-        }
     }
 
     // MARK: - Collapsed pill (M9)
@@ -173,22 +196,21 @@ struct ListColumnView: View {
             Button(action: expand) {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverHighlightButtonStyle())
+            .help("Expand list")
             .accessibilityIdentifier(AccessibilityID.collapseListButton(list.name))
             .accessibilityLabel("Expand \(list.name)")
 
             // M11: collapsed pills show FILTERED counts too — same `countLabel` as the expanded
-            // header below.
+            // header below (and the same quiet no-capsule treatment).
             Text(countLabel)
                 .font(.caption)
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.2), in: Capsule())
                 .accessibilityIdentifier(AccessibilityID.listCardCount(list.name))
 
             // Rotated name. `fixedSize` gives it its ideal (unwrapped) size in layout; the -90°
@@ -208,7 +230,14 @@ struct ListColumnView: View {
         .padding(.vertical, 8)
         .frame(width: collapsedWidth, alignment: .top)
         .frame(maxHeight: .infinity)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.columnSurface, in: RoundedRectangle(cornerRadius: 10))
+        // Hover wash: the whole pill is clickable (expand), so it should acknowledge the pointer
+        // like a card does.
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.primary.opacity(isPillHovering ? 0.05 : 0))
+                .allowsHitTesting(false)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
@@ -216,7 +245,17 @@ struct ListColumnView: View {
         }
         .clipped()
         .contentShape(Rectangle())
+        .onHover { isPillHovering = $0 }
         .onTapGesture(perform: expand)
+        // A collapsed list must stay fully operable by right-click; rename needs the expanded
+        // header's inline editor, so it's expand-first here.
+        .contextMenu {
+            Button("Expand List", action: expand)
+            Divider()
+            Button("Delete List", role: .destructive) {
+                isPresentingDeleteConfirm = true
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.list(list.name))
         .accessibilityValue("collapsed")
@@ -242,37 +281,42 @@ struct ListColumnView: View {
                 list.name,
                 beginEditOn: .doubleClick,
                 font: .headline,
-                accessibilityID: AccessibilityID.listHeader(list.name)
+                accessibilityID: AccessibilityID.listHeader(list.name),
+                beginEditSignal: $beginRenameList
             ) { newName in
                 store.renameList(list, to: newName)
             }
             Spacer(minLength: 4)
             // M11: plain total ("3") normally; "visible/total" ("1/3") while a label filter is
-            // active and hiding at least one card — see `countLabel`.
+            // active and hiding at least one card — see `countLabel`. Plain quiet text (no capsule):
+            // a passive count dressed as a pill read as a control beside the real chevron button.
             Text(countLabel)
                 .font(.caption)
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.2), in: Capsule())
                 .accessibilityIdentifier(AccessibilityID.listCardCount(list.name))
             // Collapse chevron — placed TRAILING so it never overlaps the leading rename/drag
             // regions: the name owns double-click-rename, the header body owns the list drag. A
             // Button captures its own click, so tapping the chevron collapses without starting a
-            // drag or a rename.
+            // drag or a rename. The 4pt label padding grows the mouse target past the bare glyph.
             Button(action: collapse) {
                 Image(systemName: "chevron.left")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .padding(4)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverHighlightButtonStyle())
+            .help("Collapse list")
             .accessibilityIdentifier(AccessibilityID.collapseListButton(list.name))
             .accessibilityLabel("Collapse \(list.name)")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .contextMenu {
+            Button("Rename List") { beginRenameList = true }
+            Button("Add Card") { startAddingCard() }
+            Button("Collapse List", action: collapse)
+            Divider()
             Button("Delete List", role: .destructive) {
                 isPresentingDeleteConfirm = true
             }
@@ -309,7 +353,7 @@ struct ListColumnView: View {
                 addCardRow
                 footerDropZone
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
         }
     }
 
@@ -319,6 +363,7 @@ struct ListColumnView: View {
     @ViewBuilder
     private var addCardRow: some View {
         if isAddingCard {
+            // Styled as the card it is about to become: same surface + hairline as `CardView`.
             TextField("Card title", text: $newCardDraft)
                 .textFieldStyle(.plain)
                 .focused($isAddCardFocused)
@@ -329,19 +374,29 @@ struct ListColumnView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: rowHeight)
                 .padding(.horizontal, 10)
-                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: 6))
+                // Non-hit-testing so caret clicks reach the field (see CardDetailView's hairline).
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.surfaceHairline).allowsHitTesting(false))
                 .accessibilityIdentifier(AccessibilityID.newCardField)
         } else {
             Button(action: startAddingCard) {
-                Label("Add card", systemImage: "plus")
+                Label("Add Card", systemImage: "plus")
+                    .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: rowHeight)
                     .padding(.horizontal, 10)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .buttonStyle(HoverHighlightButtonStyle())
             .accessibilityIdentifier(AccessibilityID.addCardButton(list: list.name))
+            // Append-drop preview: the footer's ColumnDropPayload destination appends to the END
+            // of the list, which materializes ABOVE this row — so the indicator belongs on this
+            // row's top edge, not (as before) below it on the footer zone. Overlay only: no
+            // layout shift, and the frozen drop topology is untouched.
+            .overlay(alignment: .top) {
+                InsertionIndicator()
+                    .opacity(isFooterTargeted ? 1 : 0)
+            }
         }
     }
 
@@ -360,10 +415,6 @@ struct ListColumnView: View {
     private var footerDropZone: some View {
         Color.clear
             .frame(maxWidth: .infinity, minHeight: 400)
-            .overlay(alignment: .top) {
-                InsertionIndicator()
-                    .opacity(isFooterTargeted ? 1 : 0)
-            }
             .contentShape(Rectangle())
             .onTapGesture(count: 2, perform: startAddingCard)
             .dropDestination(for: ColumnDropPayload.self) { items, location in
@@ -375,12 +426,6 @@ struct ListColumnView: View {
                     return handleDrop(transfer: transfer, location: location)
                 }
             } isTargeted: { isFooterTargeted = $0 }
-    }
-
-    private var insertionIndicator: some View {
-        RoundedRectangle(cornerRadius: 1.5)
-            .fill(Color.accentColor)
-            .frame(width: 3)
     }
 
     // MARK: - Add-card flow
