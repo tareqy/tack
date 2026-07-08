@@ -162,6 +162,25 @@ final class CardDetailUITests: TackUITestCase {
                       "after removing red, dots value should be yellow only")
     }
 
+    /// M-0: picker chips are color circles only — no wide text capsule — but MUST keep
+    /// their color name as the accessibility label (VoiceOver + this suite's queries).
+    /// XCUITest cannot see INSIDE the button (one atomic AX element), so the oracle is
+    /// geometry: the old text capsule filled a ~99pt grid column; a color circle is ~26pt.
+    func testPickerChipsAreCircleOnlyWithAccessibleNames() {
+        launch(fixture: "standard")
+
+        openDetailViaBodyDoubleClick("Call plumber")
+        let red = labelChip("red")
+        XCTAssertTrue(red.waitForExistence(timeout: timeout))
+        XCTAssertLessThanOrEqual(red.frame.size.width, 60,
+                                 "picker chips must be compact color circles, not text capsules — got width \(red.frame.size.width)")
+        XCTAssertEqual(red.label, "Red",
+                       "chips must keep their color name as the accessibility label")
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+    }
+
     /// M10 (D-03): extended in place — per the task-12 brief — to the new "<iso>|<status>" a11y
     /// value format (was a bare ISO date), keeping the SAME assertion strength (still one exact
     /// `XCTAssertEqual` against a fully-computed expected string, just a longer one). This also

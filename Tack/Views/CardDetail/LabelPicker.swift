@@ -1,20 +1,19 @@
 import SwiftUI
 
-/// All 8 `LabelColor`s as toggle chips, in `LabelColor.allCases` order. Selected state is visible
-/// (filled swatch + checkmark) vs unselected (outline only). Mutates ONLY the caller's staged
-/// `Set<LabelColor>` binding — no store writes happen here (see `CardDetailView`, which commits the
-/// whole staged edit through `BoardStore.applyCardEdits` on Save).
+/// The card-detail label toggles: one filled color circle per `LabelColor`, selection shown as
+/// a checkmark + primary ring. Deliberately diverged (M-0 polish) from the shared
+/// `LabelChipLabel` capsule that `LabelFilterBar` still uses — color-name text is dropped here,
+/// so the color name MUST be re-attached as `.accessibilityLabel` (the visible `Text` used to
+/// BE the accessible name) and is echoed as a `.help` tooltip for sighted hover.
 struct LabelPicker: View {
     @Binding var selected: Set<LabelColor>
-
-    private let columns = [GridItem(.adaptive(minimum: 96), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Labels")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
                 ForEach(LabelColor.allCases, id: \.self) { color in
                     chip(for: color)
                 }
@@ -22,17 +21,29 @@ struct LabelPicker: View {
         }
     }
 
-    /// The shared `LabelChipLabel` look — one definition with `LabelFilterBar`. Its `.black`
-    /// selected foreground is the M10 dark-mode audit result (see `LabelChipLabel`'s doc comment),
-    /// now measured-true again because the fill is full-opacity.
     private func chip(for color: LabelColor) -> some View {
         let isSelected = selected.contains(color)
+        let name = color.rawValue.capitalized
         return Button {
             toggle(color)
         } label: {
-            LabelChipLabel(color: color, isSelected: isSelected, fillsWidth: true)
+            ZStack {
+                Circle()
+                    .fill(color.swatchColor)
+                    .frame(width: 26, height: 26)
+                if isSelected {
+                    // Black checkmark on the filled swatch — matches LabelChipLabel's
+                    // audited selected-state treatment (black on all 8 swatch colors).
+                    Image(systemName: "checkmark")
+                        .font(.caption2.bold())
+                        .foregroundStyle(Color.black)
+                }
+            }
+            .overlay(Circle().strokeBorder(Color.primary.opacity(isSelected ? 0.6 : 0), lineWidth: 2))
         }
         .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
         .accessibilityIdentifier(AccessibilityID.labelChip(color.rawValue))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

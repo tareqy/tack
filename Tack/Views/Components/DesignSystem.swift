@@ -55,14 +55,10 @@ struct HoverHighlightButtonStyle: ButtonStyle {
     }
 }
 
-/// The one label-chip appearance, shared by the card-detail `LabelPicker` and the board's
-/// `LabelFilterBar` so the capsule geometry can never drift between them again. Callers own the
-/// `Button`, its accessibility identifier/traits, and any width behavior (`fillsWidth`).
-///
-/// Selected fill is the swatch color at FULL opacity: the M10 black-on-fill contrast measurements
-/// were taken against the raw swatch colors, so rendering them at 0.85 (as both call sites
-/// previously did) let the backdrop bleed through and eroded exactly the margin that audit
-/// certified — worst in dark mode, where the bleed darkens every fill.
+/// The label-chip look for the board's `LabelFilterBar` (text capsule + checkmark). The
+/// card-detail `LabelPicker` deliberately diverged in the M-0 polish to color-circle-only
+/// swatches — if a third chip consumer ever appears, pick which of the two looks it shares
+/// instead of minting a fourth.
 struct LabelChipLabel: View {
     let color: LabelColor
     let isSelected: Bool
