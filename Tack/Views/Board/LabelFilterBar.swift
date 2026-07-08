@@ -30,8 +30,9 @@ struct LabelFilterBar: View {
         }
     }
 
-    /// The shared `LabelChipLabel` look (one definition with `LabelPicker`, so the capsule
-    /// geometry and the M10-audited black-on-fill contrast can never drift between the two).
+    /// The `LabelChipLabel` capsule look (M10-audited black-on-fill contrast). Sole consumer
+    /// since the M-0 polish: the card-detail `LabelPicker` deliberately diverged to
+    /// color-circle-only swatches — see the note above `LabelChipLabel` in DesignSystem.
     private func chip(for color: LabelColor) -> some View {
         let isSelected = active.contains(color)
         return Button {
