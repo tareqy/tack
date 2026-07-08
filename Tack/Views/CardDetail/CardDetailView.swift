@@ -83,7 +83,10 @@ struct CardDetailView: View {
             footer
                 .padding(20)
         }
-        .frame(width: 460, height: 560)
+        // Resizable sheet: flexible max + pinned ideal makes the macOS sheet user-resizable
+        // while opening at (and never shrinking below) the classic 460×560.
+        .frame(minWidth: 460, idealWidth: 460, maxWidth: .infinity,
+               minHeight: 560, idealHeight: 560, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.cardDetailSheet)
         // Belt-and-suspenders with Cancel's own `.cancelAction` shortcut below: this fires Esc

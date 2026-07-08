@@ -27,6 +27,17 @@ final class CardDetailUITests: TackUITestCase {
         XCTAssertFalse(detailSheet.staticTexts["Description"].exists,
                        "the old Description section title must be gone")
 
+        // Opening size pin (band, not equality): AX-space sheet metrics are
+        // environment-dependent — the UITest window clamps the sheet's visible height
+        // (a hard 560pt frame reads 520 here) and the flexible frame opens ~10pt wider
+        // than idealWidth. The band catches the real regressions (ballooning to window
+        // size or collapsing) without pinning environment-dependent exact values.
+        let sheetSize = detailSheet.frame.size
+        XCTAssertTrue((450...480).contains(sheetSize.width),
+                      "sheet should open near its 460pt ideal width, got \(sheetSize.width)")
+        XCTAssertTrue((500...580).contains(sheetSize.height),
+                      "sheet should open near its 560pt ideal height (AX reads it clamped ~520 under XCUITest), got \(sheetSize.height)")
+
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists }, "Esc should close the sheet")
     }
