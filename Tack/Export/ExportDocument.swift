@@ -157,3 +157,51 @@ struct ExportJSONDocument: FileDocument {
         FileWrapper(regularFileWithContents: data)
     }
 }
+
+// MARK: - Import errors (E-02)
+
+/// Every failure the import surface can produce — file-read/decode failures, the version gate, the
+/// empty-replace guard, and save failures wrapped at the store boundary — so RootView's alert and
+/// the e2e marker only ever handle `ImportError` (no generic-`Error` path exists).
+enum ImportError: Error, Equatable, LocalizedError {
+    /// File-read failure (missing/unreadable file — wrapped by the read step in both the
+    /// fileImporter completion and the launch hook), malformed JSON, a missing required field, or
+    /// an undecodable date (Foundation's `.iso8601` rejects fractional seconds).
+    case unreadable(detail: String)
+    /// `formatVersion != ExportDocument.formatVersion`.
+    case unsupportedVersion(Int)
+    /// Replace-all requested with a zero-board envelope. The mode dialog omits the Replace button
+    /// for empty backups; this is the store-level backstop (and what the test hook publishes if a
+    /// test forces the combination).
+    case emptyReplace
+    /// `context.save()` threw during import; wrapped after rollback — nothing was persisted.
+    case saveFailed(detail: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unreadable:
+            return "This file couldn't be read as a Tack export. It may be damaged or not a Tack export file."
+        case .unsupportedVersion(let version):
+            return "This file uses export format version \(version). This version of Tack can only import version 1."
+        case .emptyReplace:
+            return "This backup contains no boards, so it can't replace your existing boards."
+        case .saveFailed(let detail):
+            return "Tack couldn't save the imported boards. \(detail)"
+        }
+    }
+
+    /// Second alert line. Truthful because import is single-save atomic (rollback on failure).
+    var recoverySuggestion: String? {
+        "Nothing was imported. Your existing boards are unchanged."
+    }
+
+    /// Stable machine token for the e2e marker ("error|<caseName>") — never localized copy.
+    var caseName: String {
+        switch self {
+        case .unreadable: "unreadable"
+        case .unsupportedVersion: "unsupportedVersion"
+        case .emptyReplace: "emptyReplace"
+        case .saveFailed: "saveFailed"
+        }
+    }
+}

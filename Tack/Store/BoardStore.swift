@@ -389,6 +389,108 @@ final class BoardStore {
         }
     }
 
+    // MARK: - Import (E-02)
+
+    /// Append-mode import: materializes every board in `envelope` AFTER the existing boards, as
+    /// ONE undoable ⌘Z step ("Import Boards"). Single-save atomic: all inserts, then exactly one
+    /// save; on save failure the context is rolled back and the error is wrapped as
+    /// `ImportError.saveFailed` — nothing was persisted, existing boards are unchanged.
+    ///
+    /// Uses an inline, defer-closed undo bracket instead of `withUndoGroup` (whose body is
+    /// non-throwing). The defer guarantees the group can never be left open on any exit path.
+    /// Failure ordering (spec §2): detach → rollback → close group → reattach → clear stack →
+    /// throw. The manager is detached BEFORE rollback so rollback's reverts can't register; the
+    /// stack is cleared because the just-registered group references discarded objects (same
+    /// rationale as `deleteBoard`'s clear).
+    ///
+    /// An empty envelope returns early — before opening the bracket, before any save — mirroring
+    /// `moveBoards`' identity no-op, so an empty Add never eats a ⌘Z step.
+    ///
+    /// `envelope` is expected to be sanitized (`ExportDocument.decodeForImport`); `materialize`
+    /// still guards unknown label names by skipping them. `importedAt` is injectable for
+    /// deterministic tests; production passes `.now`.
+    @discardableResult
+    func importBoards(_ envelope: ExportEnvelope, importedAt: Date = .now) throws -> [Board] {
+        guard !envelope.boards.isEmpty else { return [] }
+
+        let held = context.undoManager
+        var failed = false
+        held?.beginUndoGrouping()
+        held?.setActionName("Import Boards")
+        defer {
+            held?.endUndoGrouping()
+            if context.undoManager !== held { context.undoManager = held }
+            if failed { held?.removeAllActions() }
+        }
+
+        let basePosition = (fetchBoards().map(\.position).max() ?? -1) + 1
+        let imported = materialize(envelope, basePosition: basePosition, importedAt: importedAt)
+        do {
+            try context.save()
+        } catch {
+            failed = true
+            context.undoManager = nil   // detach BEFORE rollback so its reverts can't register
+            context.rollback()
+            throw ImportError.saveFailed(detail: error.localizedDescription)
+        }
+        return imported
+    }
+
+    /// Direct memberwise materialization of an import envelope. Fresh UUIDs (the format carries
+    /// none); board positions `basePosition + arrayIndex`; list/card positions from array
+    /// enumeration — DTO position fields are dead by construction (never read, so hand-edited
+    /// duplicates/gaps can't corrupt ordering). `BoardList.createdAt` is synthesized from
+    /// `importedAt` (absent from the format). Labels attach by FETCHING the existing unique
+    /// palette rows into a dictionary and appending those rows — never inserting `CardLabel`
+    /// (unique `colorName`; palette invariant = exactly 8 rows); a missing row is skipped, never
+    /// created, mirroring `toggleLabel`'s guard. Deliberately NOT `createBoard` (which injects
+    /// three default lists). Performs NO save — callers own the single-save transaction.
+    private func materialize(_ envelope: ExportEnvelope, basePosition: Int, importedAt: Date) -> [Board] {
+        let allLabels = fetchLabels()
+        let labelsByColorName = Dictionary(uniqueKeysWithValues: allLabels.map { ($0.colorName, $0) })
+
+        return envelope.boards.enumerated().map { boardIndex, exportBoard in
+            let board = Board(
+                name: exportBoard.name,
+                emoji: exportBoard.emoji,
+                position: basePosition + boardIndex,
+                themeName: exportBoard.themeName,
+                customThemeHex: exportBoard.customThemeHex,
+                createdAt: exportBoard.createdAt
+            )
+            context.insert(board)
+            for (listIndex, exportList) in exportBoard.lists.enumerated() {
+                let list = BoardList(
+                    name: exportList.name,
+                    position: listIndex,
+                    isCollapsed: exportList.isCollapsed,
+                    createdAt: importedAt,
+                    board: board
+                )
+                context.insert(list)
+                for (cardIndex, exportCard) in exportList.cards.enumerated() {
+                    let card = Card(
+                        title: exportCard.title,
+                        details: exportCard.details,
+                        position: cardIndex,
+                        dueDate: exportCard.dueDate,
+                        includesTime: exportCard.includesTime,
+                        createdAt: exportCard.createdAt,
+                        updatedAt: exportCard.updatedAt,
+                        list: list
+                    )
+                    context.insert(card)
+                    for labelColorName in exportCard.labels {
+                        if let label = labelsByColorName[labelColorName] {
+                            card.labels.append(label)
+                        }
+                    }
+                }
+            }
+            return board
+        }
+    }
+
     // MARK: - Position bookkeeping
 
     private func renumber<T: PositionedEntity>(_ items: [T]) {
