@@ -327,13 +327,26 @@ Honesty note on TDD: XCUITest cannot reliably synthesize a sheet-edge resize dra
 
 - [ ] **Step 1: Add the opening-size pin (regression guard, passes before and after)**
 
+> **Amended after empirical measurement (2026-07-08):** exact-equality pins are wrong in
+> AX-space. The UITest window clamps the sheet's visible height — a hard
+> `.frame(height: 560)` measures **520** through XCUITest — and the flexible frame opens
+> 10 pt wider than `idealWidth` (470). The pin is therefore a **band**: it still catches
+> the two real regressions a flexible frame can introduce (ballooning to window size /
+> collapsing), without pinning environment-dependent values.
+
 In `testOpenDetailViaDoubleClickBody`, after the "Brief" assertions from Task 1, add:
 
 ```swift
-        // Opening size pin: the sheet must OPEN at its minimum/ideal 460×560 even after
-        // becoming resizable (idealWidth/idealHeight regression guard).
-        XCTAssertEqual(detailSheet.frame.size.width, 460, accuracy: 2)
-        XCTAssertEqual(detailSheet.frame.size.height, 560, accuracy: 2)
+        // Opening size pin (band, not equality): AX-space sheet metrics are
+        // environment-dependent — the UITest window clamps the sheet's visible height
+        // (a hard 560pt frame reads 520 here) and the flexible frame opens ~10pt wider
+        // than idealWidth. The band catches the real regressions (ballooning to window
+        // size or collapsing) without pinning environment-dependent exact values.
+        let sheetSize = detailSheet.frame.size
+        XCTAssertTrue((450...480).contains(sheetSize.width),
+                      "sheet should open near its 460pt ideal width, got \(sheetSize.width)")
+        XCTAssertTrue((500...580).contains(sheetSize.height),
+                      "sheet should open near its 560pt ideal height (AX reads it clamped ~520 under XCUITest), got \(sheetSize.height)")
 ```
 
 - [ ] **Step 2: Make the frame flexible**
