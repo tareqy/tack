@@ -6,16 +6,17 @@ import XCTest
 /// The drag-itself tests (`testDragReorderPersistsAcrossRelaunch`, `testUndoRestoresOrderAfterDrag`)
 /// were deleted per the design spec's documented fallback (see
 /// `docs/superpowers/specs/2026-07-07-board-sidebar-reorder-design.md`, "Testing" section,
-/// "Outcome: the risk materialized"): XCUITest's synthesized `press(forDuration:thenDragTo:)`
-/// gesture visibly reorders the row mid-drag (confirmed via `.xcresult` screen recording) but the
-/// drop never commits — NSTableView's drag session doesn't call `performDragOperation`, and the
-/// order snaps back on release. Tuning `pressDuration`/`holdDuration` (0.9s/1.0s) made no
-/// difference. A hand-equivalent CGEvent-driven synthetic drag against a manually launched build
-/// DID commit the reorder, confirming the feature itself works and isolating the failure to
-/// XCUITest's gesture synthesis specifically for native `List` `.onMove` (as opposed to the
-/// custom `Tack/DragDrop/` `Transferable`-based drags elsewhere in the app, which XCUITest drives
-/// fine). B-06's drag-reorder is covered by `Reordering`/`BoardStore.moveBoards` unit tests
-/// (including the one-undo-step behavior) plus this manual verification, not by e2e.
+/// "Outcome: the risk materialized", which holds the full evidence trail): native `List`
+/// `.onMove` row-reorder cannot be driven by synthetic input. Under XCUITest's
+/// `press(forDuration:thenDragTo:)` the row lifts and live-previews the reorder but the drop
+/// never commits (order snaps back on release; press/hold tuning made no difference); CGEvent
+/// input posted at the HID event tap fails harder — it never even initiates the reorder preview —
+/// while the same CGEvent technique drives the custom `Tack/DragDrop/` `Transferable`-based drags
+/// to completion. The limitation is NSTableView's native row-drag session under synthetic input
+/// (internal mechanism uninstrumented). The feature itself is human-verified working with a real
+/// mouse (2026-07-08; reproducible procedure in the spec paragraph above). B-06's drag-reorder is
+/// covered by `Reordering`/`BoardStore.moveBoards` unit tests (including the one-undo-step
+/// behavior) plus that manual verification, not by e2e.
 ///
 /// Order is asserted by comparing row frame `minY` — rows never overlap, so "a above b" is
 /// unambiguous. (No `boardIdentifiersByPosition` helper on the base class: a BEGINSWITH
