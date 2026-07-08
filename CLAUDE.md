@@ -32,11 +32,18 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 # -only-testing:TackUITests/CardCRUDUITests                   # a UI suite
 ```
 
+Manual hand-test against a scratch store (never touches real data):
+
+```sh
+open .build/DerivedData/Build/Products/Debug/Tack.app --args --uitest --fixture standard --store-name scratch --reset
+```
+
 ### xcodebuild process rules
 
 - Run `xcodebuild` in the **foreground** and read complete output. Background runs orphan themselves; concurrent runs deadlock on the shared DerivedData lock.
 - Before any run: `pkill -f xcodebuild; pkill -f Tack.app`.
 - A unit-test run past ~6 minutes is a **hang, not a slow run** (classically an NSUndoManager exception killing the Swift Testing runner — see Pitfalls). Kill it and read the log tail for a FAULT line.
+- UI runs are legitimately slow: `make ui`/`make test` ≈ 20–25 min (74 tests, serial). `tee` xcodebuild output to a log under `.build/` and read it to completion — long foreground commands can get auto-backgrounded, and an unread gate is not a gate.
 
 ## Architecture
 
@@ -49,7 +56,7 @@ Three targets (defined in `project.yml`): `Tack` (app), `TackTests` (Swift Testi
 - `Tack/Store/ModelContainerFactory.swift` — three containers: `production()` (on-disk), `inMemory()` (unit tests), `uiTest(storeName:reset:)` (on-disk per-test store under the sandbox's `Application Support/UITest/`).
 - `Tack/Views/` — `RootView` (NavigationSplitView: `Sidebar/` + `Board/`), `CardDetail/`, shared `Components/`. `Views/Spike/` is a minimal board kept alive as the drag-and-drop e2e regression path.
 - `Tack/Commands/` — menu-bar commands (`AppCommands`), attached at the WindowGroup **scene** level (commands registered inside the split view never register). `FocusedValues.textInputFocused` gates editing commands (see Pitfalls).
-- `Tack/DragDrop/` — `Transferable` payloads (`CardTransfer`, `ListTransfer`) + `DropMath`. **Architecture invariant:** SwiftUI `.dropDestination` does not dispatch by payload type — a destination swallows every drag landing on it, and stacked different-typed destinations shadow each other. Hence: column container accepts ListTransfer only, card rows accept CardTransfer, and the list footer is ONE dual-import destination (`ColumnDropPayload`) that routes both. Do not refactor back to "one typed destination per payload".
+- `Tack/DragDrop/` — `Transferable` payloads (`CardTransfer`, `ListTransfer`) + `DropMath`. **Architecture invariant:** SwiftUI `.dropDestination` does not dispatch by payload type — a destination swallows every drag landing on it, and stacked different-typed destinations shadow each other. Hence: column container accepts ListTransfer only, card rows accept CardTransfer, and the list footer is ONE dual-import destination (`ColumnDropPayload`) that routes both. Do not refactor back to "one typed destination per payload". (Sidebar board reorder deliberately uses native `List` `.onMove` instead of this machinery — see Pitfalls.)
 
 ### Launch paths (`TackApp.init` branches on `AppLaunchConfig`)
 
@@ -68,5 +75,6 @@ Subclass `TackUITestCase`. `launch(fixture:)` gives each test its own named on-d
 - **No window on `--uitest` launch:** macOS doesn't auto-present the WindowGroup window under XCUITest; `TackUITestCase.ensureWindow` (⌘N nudge) handles it — always launch through the base class.
 - **`.accessibilityIdentifier` on an ancestor shadows child ids** — never identify an ancestor of a container you query by id (this is why `RootView` hangs `root-view` off a sibling `Color.clear`).
 - **Drag retries must poll the postcondition** before retrying; an instant `.exists` check triggers a spurious second drag that corrupts state.
+- **`Reordering.movedWithin` has two overloads with different destination conventions:** `(from:to:)` takes the target index in the *resulting* array (used by `moveList`/`moveCard`); `(fromOffsets:toOffset:)` takes SwiftUI's *pre-removal* insertion offset (used by `moveBoards`). `.onMove` handlers must use the offsets overload — the index one silently off-by-ones down-moves.
 - **Native `List` `.onMove` row-reorder cannot be driven by synthetic input** (confirmed for the B-06 sidebar): under XCUITest's `press(forDuration:thenDragTo:)` the row lifts and live-previews the reorder, but the drop never commits; CGEvent drags (posted at the HID event tap, `.cghidEventTap`) fail harder — they never even initiate the reorder preview — while the *same* CGEvent technique commits the board-canvas `Transferable` drag fine. So the limitation is NSTableView's native row-drag session under synthetic input (internal mechanism uninstrumented). Human-verified working with a real mouse (2026-07-08; 30-second procedure in the B-06 spec's Testing section). `SidebarReorderUITests` keeps only the filter-gate test; the reorder logic is unit-covered (`Reordering`, `BoardStore.moveBoards`), not e2e-covered.
 - **Text-input focus detection:** `firstResponder` is useless in SwiftUI here (always a private proxy). The working pattern is the `textInputFocused` `@FocusedValue` published by every TextField/TextEditor, plus an action-level re-check including `NSApp.keyWindow?.isSheet`. New text fields must publish it or menu shortcuts will fire while typing.
