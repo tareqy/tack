@@ -104,7 +104,10 @@ struct BoardStoreImportTests {
         let env = TestContainer()
         defer { withExtendedLifetime(env) {} }
         env.store.ensureLabelsSeeded()
-        let paletteIDs = Set(fetchLabels(env.context).map(ObjectIdentifier.init))
+        // persistentModelID, not ObjectIdentifier: ObjectIdentifier is not a stable oracle here —
+        // SwiftData refaults/reissues Swift instances for the same persistent rows across saves,
+        // so instance identity flakes even when the rows are genuinely the same.
+        let paletteIDs = Set(fetchLabels(env.context).map(\.persistentModelID))
         #expect(paletteIDs.count == 8)
 
         try env.store.importBoards(sampleEnvelope())
@@ -112,28 +115,23 @@ struct BoardStoreImportTests {
         #expect(fetchLabels(env.context).count == 8, "import must never insert CardLabel rows")
         let cardA1 = fetchBoards(env.context)[0].sortedLists[0].sortedCards[0]
         #expect(Set(cardA1.labels.map(\.colorName)) == ["red", "blue"])
-        #expect(Set(cardA1.labels.map(ObjectIdentifier.init)).isSubset(of: paletteIDs),
-                "attached labels are the SAME palette row objects, not copies")
+        #expect(Set(cardA1.labels.map(\.persistentModelID)).isSubset(of: paletteIDs),
+                "attached labels are the SAME palette rows, not copies")
     }
 
-    @Test("append is exactly one undo step: undo removes the whole import, redo restores it")
-    func appendIsOneUndoStep() throws {
+    @Test("append import is not undoable: the undo stack is cleared (spike-fail fallback)")
+    func appendClearsUndoStack() throws {
         let env = TestContainer(withUndo: true)
         defer { withExtendedLifetime(env) {} }
         env.store.ensureLabelsSeeded()
         env.store.createBoard(name: "Existing", emoji: nil)
+        #expect(env.undoManager!.canUndo == true, "precondition: something undoable exists")
 
         try env.store.importBoards(sampleEnvelope())
+
         #expect(fetchBoards(env.context).count == 3)
-
-        env.undoManager!.undo()
-        #expect(fetchBoards(env.context).map(\.name) == ["Existing"], "one ⌘Z removes the entire import")
-        #expect(fetchLabels(env.context).count == 8, "palette untouched by undo (fetched, not inserted)")
-
-        env.undoManager!.redo()
-        #expect(fetchBoards(env.context).count == 3, "one redo restores the entire import")
-        #expect(fetchBoards(env.context)[1].sortedLists[0].sortedCards[0].labels.count == 2,
-                "label joins restored by redo")
+        #expect(env.undoManager!.canUndo == false)
+        #expect(env.undoManager!.canRedo == false)
     }
 
     @Test("empty-envelope append is a no-op that registers no undo step")
@@ -147,14 +145,5 @@ struct BoardStoreImportTests {
         #expect(imported.isEmpty)
         #expect(fetchBoards(env.context).isEmpty)
         #expect(env.undoManager!.canUndo == false, "no empty 'Import Boards' group on the stack")
-    }
-
-    @Test("undo action name is 'Import Boards'")
-    func undoActionName() throws {
-        let env = TestContainer(withUndo: true)
-        defer { withExtendedLifetime(env) {} }
-        env.store.ensureLabelsSeeded()
-        try env.store.importBoards(sampleEnvelope())
-        #expect(env.undoManager!.undoActionName == "Import Boards")
     }
 }

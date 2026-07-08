@@ -391,20 +391,21 @@ final class BoardStore {
 
     // MARK: - Import (E-02)
 
-    /// Append-mode import: materializes every board in `envelope` AFTER the existing boards, as
-    /// ONE undoable ⌘Z step ("Import Boards"). Single-save atomic: all inserts, then exactly one
-    /// save; on save failure the context is rolled back and the error is wrapped as
-    /// `ImportError.saveFailed` — nothing was persisted, existing boards are unchanged.
+    /// Append-mode import: materializes every board in `envelope` AFTER the existing boards.
+    /// Single-save atomic: all inserts, then exactly one save; on save failure the context is
+    /// rolled back and the error is wrapped as `ImportError.saveFailed` — nothing was persisted,
+    /// existing boards are unchanged.
     ///
-    /// Uses an inline, defer-closed undo bracket instead of `withUndoGroup` (whose body is
-    /// non-throwing). The defer guarantees the group can never be left open on any exit path.
-    /// Failure ordering (spec §2): detach → rollback → close group → reattach → clear stack →
-    /// throw. The manager is detached BEFORE rollback so rollback's reverts can't register; the
-    /// stack is cleared because the just-registered group references discarded objects (same
-    /// rationale as `deleteBoard`'s clear).
+    /// Append import is NOT undoable — the spike gate failed: SwiftData's automatic undo
+    /// registration deterministically drops 3rd-level Card inserts on redo of a multi-board
+    /// graph (in-memory, 3/3 runs; see `ImportUndoOnDiskTests` and the spec's Spike outcome
+    /// block). The detach discipline and stack clear mirror `deleteBoard`: the manager is
+    /// detached for the span of the operation so nothing registers, and the stack is cleared
+    /// afterwards because earlier groups may reference state the import's save has since
+    /// invalidated.
     ///
-    /// An empty envelope returns early — before opening the bracket, before any save — mirroring
-    /// `moveBoards`' identity no-op, so an empty Add never eats a ⌘Z step.
+    /// An empty envelope returns early — before detaching, before any save — mirroring
+    /// `moveBoards`' identity no-op, so an empty Add never clears the undo stack.
     ///
     /// `envelope` is expected to be sanitized (`ExportDocument.decodeForImport`); `materialize`
     /// still guards unknown label names by skipping them. `importedAt` is injectable for
@@ -412,24 +413,19 @@ final class BoardStore {
     @discardableResult
     func importBoards(_ envelope: ExportEnvelope, importedAt: Date = .now) throws -> [Board] {
         guard !envelope.boards.isEmpty else { return [] }
-
+        // SPIKE FAILED (see ImportUndoOnDiskTests + spec Testing outcome): multi-board-graph undo
+        // is unsafe on-disk. Import is NOT undoable — deleteBoard's detach discipline.
         let held = context.undoManager
-        var failed = false
-        held?.beginUndoGrouping()
-        held?.setActionName("Import Boards")
+        context.undoManager = nil
         defer {
-            held?.endUndoGrouping()
-            if context.undoManager !== held { context.undoManager = held }
-            if failed { held?.removeAllActions() }
+            context.undoManager = held
+            held?.removeAllActions()
         }
-
         let basePosition = (fetchBoards().map(\.position).max() ?? -1) + 1
         let imported = materialize(envelope, basePosition: basePosition, importedAt: importedAt)
         do {
             try context.save()
         } catch {
-            failed = true
-            context.undoManager = nil   // detach BEFORE rollback so its reverts can't register
             context.rollback()
             throw ImportError.saveFailed(detail: error.localizedDescription)
         }
