@@ -37,16 +37,19 @@ struct AppCommands: Commands {
             // E-01 (⇧⌘E): export every board to JSON via the save panel (hosted by RootView).
             // Enabled whenever at least one board exists; routed through `guardedMutation` so the
             // panel is never presented from a typing context or beneath an open card-detail sheet.
+            // Both items also gray out while a text editor has focus — `guardedMutation` already
+            // swallowed the action in that state, but an enabled-looking item whose click silently
+            // no-ops is a trap for the mouse path (found in E-02's manual gate via the sidebar filter).
             Button("Export All Boards…") { guardedMutation { boardSelection?.exportAllBoards() } }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(boardSelection?.boardNames.isEmpty != false)
+                .disabled(boardSelection?.boardNames.isEmpty != false || isTextInputActive)
 
             // E-02 (⇧⌘I): import a JSON backup via the open panel (hosted by RootView, same
             // constraint as the exporter). Enabled whenever RootView publishes the surface —
             // including with zero boards (restore-into-empty is the headline case).
             Button("Import Boards…") { guardedMutation { boardSelection?.importBoards() } }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
-                .disabled(boardSelection == nil)
+                .disabled(boardSelection == nil || isTextInputActive)
 
             Divider()
         }

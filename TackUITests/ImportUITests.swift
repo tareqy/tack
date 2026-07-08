@@ -132,4 +132,42 @@ final class ImportUITests: TackUITestCase {
                        "cancel imports nothing — no duplicate rows")
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: AccessibilityID.board("Work")).count, 1)
     }
+
+    // MARK: - Text-input guard (mouse path)
+
+    /// Ship-gate regression: Export/Import route their actions through `guardedMutation`, which
+    /// silently no-ops while a tagged text input has focus (the M7 guard) — but until now neither
+    /// item's `.disabled(...)` included that check, so a click while e.g. the sidebar filter was
+    /// focused looked enabled and did nothing. Mirrors the Delete Card / Open Card / Move Card /
+    /// Filter by Label items, which already pair the guard with `isTextInputActive`.
+    func testImportExportGrayOutWhileTyping() {
+        launch(fixture: "standard")
+        XCTAssertTrue(boardDetail.waitForExistence(timeout: timeout))
+
+        // Focus the sidebar filter — a reportsTextInputFocus()-tagged field.
+        let filter = app.textFields[AccessibilityID.sidebarFilterField]
+        XCTAssertTrue(filter.waitForExistence(timeout: timeout))
+        filter.click()
+
+        openMenu("File")
+        XCTAssertFalse(menuItem("Import Boards…").isEnabled, "Import should gray out while typing")
+        XCTAssertFalse(menuItem("Export All Boards…").isEnabled, "Export should gray out while typing")
+        closeMenu()
+
+        // Move focus out of the field. Clicking `board-detail` (a plain Text header, no AppKit
+        // control underneath) does NOT resign the field editor — verified on this host, the menu
+        // items stayed disabled afterward. A sidebar board row IS backed by an AppKit NSTableView
+        // (List selection), whose click handling reliably calls makeFirstResponder(tableView),
+        // which does resign the TextField. Same row-click pattern BoardCRUDUITests/
+        // SidebarReorderUITests use to interact with these boards.
+        let workRow = app.descendants(matching: .any)[AccessibilityID.board("Work")]
+        XCTAssertTrue(workRow.waitForExistence(timeout: timeout))
+        workRow.click()
+
+        openMenu("File")
+        XCTAssertTrue(menuItem("Import Boards…").waitForExistence(timeout: timeout))
+        XCTAssertTrue(menuItem("Import Boards…").isEnabled, "Import should re-enable once typing ends")
+        XCTAssertTrue(menuItem("Export All Boards…").isEnabled, "Export should re-enable once typing ends")
+        closeMenu()
+    }
 }
