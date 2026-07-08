@@ -422,17 +422,28 @@ Critical constraint: `LabelChipLabel` is shared with `LabelFilterBar` (which kee
 
 Add to `TackUITests/CardDetailUITests.swift` (after `testToggleLabelsReflectOnCardFace`):
 
+> **Amended after empirical measurement (2026-07-08):** macOS exposes a plain SwiftUI
+> `Button` as one ATOMIC accessibility element under XCUITest — the inner `Text("Red")`
+> is never a queryable `.staticTexts` descendant, and the button's synthesized `label`
+> already reads "Red" today. A `staticTexts.count == 0` oracle therefore passes against
+> the OLD capsule too and cannot go red. The oracle that does differentiate through the
+> atomic button boundary is **geometry**: the old text capsule fills a ~99 pt grid
+> column (`fillsWidth: true` in a 96 pt-min adaptive grid); the new color circle is
+> ~26 pt wide.
+
 ```swift
-    /// M-0: picker chips are color circles only — no visible color-name text — but MUST keep
+    /// M-0: picker chips are color circles only — no wide text capsule — but MUST keep
     /// their color name as the accessibility label (VoiceOver + this suite's queries).
+    /// XCUITest cannot see INSIDE the button (one atomic AX element), so the oracle is
+    /// geometry: the old text capsule filled a ~99pt grid column; a color circle is ~26pt.
     func testPickerChipsAreCircleOnlyWithAccessibleNames() {
         launch(fixture: "standard")
 
         openDetailViaBodyDoubleClick("Call plumber")
         let red = labelChip("red")
         XCTAssertTrue(red.waitForExistence(timeout: timeout))
-        XCTAssertEqual(red.staticTexts.count, 0,
-                       "picker chips must render as color circles with no visible text")
+        XCTAssertLessThanOrEqual(red.frame.size.width, 60,
+                                 "picker chips must be compact color circles, not text capsules — got width \(red.frame.size.width)")
         XCTAssertEqual(red.label, "Red",
                        "chips must keep their color name as the accessibility label")
 
@@ -452,7 +463,7 @@ xcodebuild -project Tack.xcodeproj -scheme Tack \
   -only-testing:TackUITests/CardDetailUITests/testPickerChipsAreCircleOnlyWithAccessibleNames \
   -parallel-testing-enabled NO test 2>&1 | tee .build/m0-task4-red.log
 ```
-Expected: `** TEST FAILED **` on the `staticTexts.count` assertion (chips currently render `Text("Red")` etc. inside `LabelChipLabel`).
+Expected: `** TEST FAILED **` on the width assertion (the current capsule chip fills a ~99 pt grid column, well over the 60 pt circle band).
 
 - [ ] **Step 3: Rewrite the picker chips as circles**
 
