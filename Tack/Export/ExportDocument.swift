@@ -124,6 +124,56 @@ enum ExportDocument {
         return try decoder.decode(ExportEnvelope.self, from: data)
     }
 
+    /// E-02 import: decode → explicit `formatVersion` gate (plain `decode` ignores it) → pure
+    /// gray-zone sanitization (spec: hard-reject only structural failure; sanitize the rest).
+    /// `calendar` is injectable so the start-of-day rule is table-testable under a pinned time
+    /// zone; production uses `.current`. Idempotent: re-running on its own output is the identity
+    /// (pinned by ImportDecodeTests).
+    static func decodeForImport(_ data: Data, calendar: Calendar = .current) throws -> ExportEnvelope {
+        let envelope: ExportEnvelope
+        do {
+            envelope = try decode(data)
+        } catch {
+            throw ImportError.unreadable(detail: String(describing: error))
+        }
+        guard envelope.formatVersion == formatVersion else {
+            throw ImportError.unsupportedVersion(envelope.formatVersion)
+        }
+        return sanitized(envelope, calendar: calendar)
+    }
+
+    /// Gray-zone sanitization (all pure, all idempotent):
+    ///   - card labels filtered to known `LabelColor` rawValues, deduped, reordered to palette order;
+    ///   - `dueDate` → `calendar.startOfDay` when `includesTime == false` (the Card invariant);
+    ///   - `customThemeHex` canonicalized via HexColor parse→format, or nil when unparsable (the
+    ///     store's "never persists unparsable hex" invariant).
+    /// Deliberately NOT rewritten: `themeName` (unknowns resolve to `.default` at render — that IS
+    /// the fallback) and every `position` field (the materializer never reads them).
+    private static func sanitized(_ envelope: ExportEnvelope, calendar: Calendar) -> ExportEnvelope {
+        var result = envelope
+        result.boards = envelope.boards.map { board in
+            var board = board
+            board.customThemeHex = board.customThemeHex
+                .flatMap(HexColor.parse)
+                .map { HexColor.format(r: $0.r, g: $0.g, b: $0.b) }
+            board.lists = board.lists.map { list in
+                var list = list
+                list.cards = list.cards.map { card in
+                    var card = card
+                    let owned = Set(card.labels.compactMap(LabelColor.init(rawValue:)))
+                    card.labels = LabelColor.allCases.filter { owned.contains($0) }.map(\.rawValue)
+                    if let dueDate = card.dueDate, !card.includesTime {
+                        card.dueDate = calendar.startOfDay(for: dueDate)
+                    }
+                    return card
+                }
+                return list
+            }
+            return board
+        }
+        return result
+    }
+
     /// A dated, human-readable default filename ("Tack Export 2026-07-06"). The `.json`
     /// extension is added by the exporter from the declared content type.
     static func suggestedFilename(date: Date = .now) -> String {
@@ -148,8 +198,9 @@ struct ExportJSONDocument: FileDocument {
     init(data: Data) { self.data = data }
 
     init(configuration: ReadConfiguration) throws {
-        // Import is roadmap (E-02); reading is only implemented so the type is a complete
-        // `FileDocument`. Export never round-trips through this initializer.
+        // E-02 shipped via URL-based `.fileImporter` (see RootView.handlePickedImportFile), so this
+        // ReadConfiguration path remains unused by design; it exists only so the type is a complete
+        // FileDocument. Export never round-trips through this initializer.
         data = configuration.file.regularFileContents ?? Data()
     }
 
