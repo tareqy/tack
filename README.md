@@ -1,7 +1,12 @@
 # Tack
 
 Tack — a fast, local-first kanban board for macOS: boards → lists → cards, drag-and-drop, labels,
-due dates, board themes, JSON export, keyboard-driven end to end. SwiftUI + SwiftData, macOS 14+.
+due dates, board themes, JSON export/import, keyboard-driven end to end. SwiftUI + SwiftData,
+macOS 14+.
+
+JSON export (⇧⌘E) and import (⇧⌘I) round-trip the full board/list/card/label graph, both from the
+File menu; import also has a button in the zero-board empty state, and offers a choice of adding
+the imported boards to your existing ones or replacing all boards with the file's contents.
 
 ## Build / run / test
 

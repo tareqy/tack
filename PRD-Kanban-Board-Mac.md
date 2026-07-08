@@ -176,6 +176,7 @@ Drag-and-drop must not be the only way to select or move a card — this is requ
 | ⌃⌘S | Toggle sidebar |
 | ⌘1–⌘9 | Select nth board |
 | ⇧⌘E | Export all boards to JSON |
+| ⇧⌘I | Import Boards… |
 | ⌘F | Toggle label filter bar |
 
 The bare `+` shortcut is dropped — it conflicts with normal typing. Every shortcut has a corresponding menu-bar item (SwiftUI `Commands`); **the menu bar is the source of truth**. Canonical card creation is always the "+ Add card" row at the bottom of a list; double-click is an alias for it, and ⌘N is the keyboard creation path — not separate mechanisms. (A Return-on-focused-list alias was considered but dropped: it was a redundant entry point with no unique capability, and ⌘N — a first-class menu command — is the canonical keyboard creation path. This is the design's sanctioned focus-routing fallback.) In addition to the table above, arrow keys and ⌘+arrow keys provide keyboard-only card navigation and movement — see C-10/C-11 above.
@@ -220,9 +221,9 @@ Local-first storage without an export path is exactly the lock-in this app exist
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
 | E-01 | Export all boards to a JSON file | P0 | Standard macOS save panel (sandbox-compatible via user-selected file write, e.g. `fileExporter`/`NSSavePanel`); exports the full board/list/card/label graph |
-| E-02 | Backup/restore — import a previously exported JSON file | P1 | Round-trips E-01's format; deferred post-MVP (see §7) |
+| E-02 | Backup/restore — import a previously exported JSON file | P1 | Shipped post-MVP. Two modes chosen via a dialog after the file is picked and decoded: **Add to Existing** (appends after current boards) and **Replace All Boards** (deletes existing boards first; unavailable for zero-board backups). ⇧⌘I / File menu. Malformed JSON, missing required fields, or `formatVersion != 1` hard-reject the whole file — nothing imported, user-visible error; everything else decodable is sanitized quietly (unknown label names dropped, `dueDate` re-normalized to local start-of-day when time-of-day isn't included, `customThemeHex` canonicalized-or-nil). **Neither mode is undoable** — per the recorded on-disk undo spike (multi-board-graph undo/redo silently dropped 3rd-level Card inserts on redo), both Add to Existing and Replace All detach the undo manager and clear the undo stack, exactly like board delete (see §4.7, U-01); ⌘Z after an import does nothing. Export/Import menu items gray out while a text editor has focus (mouse-click trap fix) |
 
-**MVP Scope:** E-01
+**MVP Scope:** E-01 (E-02 shipped post-MVP, see above)
 
 ---
 
@@ -346,7 +347,6 @@ These are explicitly deferred beyond the MVP, with an indicative roadmap priorit
 | Apple Watch companion | P2 | Small screen doesn't suit Kanban well |
 | Custom-theme dark/light contrast audit & accessibility polish | P1 | Baseline dark/light mode adaptation ships in MVP for free via SwiftUI; deeper contrast auditing for *custom* board themes (B-04) is deferred |
 | Cloud sync | P2 | Local-first means data lives on disk; multi-device sync needs backend infrastructure |
-| Backup/restore — import a previously exported JSON file | P1 | Tracked as E-02 (§4.6); export (E-01, §4.6) ships in MVP; round-trip import is deferred |
 | Optional due-date time-of-day | P1 | Schema carries an `includesTime` flag (default `false`) from v1 so this lands without a migration (§4.5, §6) |
 | Search across all boards (Spotlight integration) | P2 | Useful, but deferred to roadmap (§1) |
 | Apple Reminders sync (EventKit) | P2 | Deferred to roadmap (§1); see D-04 |
@@ -414,6 +414,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 ### 9.6 Data Export
 
 - **E-01 — Export to JSON.** Given at least one board exists, when the user chooses Export (menu or shortcut), then a standard save panel appears; when the user picks a location and confirms, then a JSON file is written containing all boards, lists, cards, and label assignments, and the file can be re-parsed to reconstruct the same data graph.
+- **E-02 — Import from JSON.** (a) Given a previously exported JSON file, when the user imports it, then the boards/lists/cards/labels/due dates/themes it contains are restored in the same order as the source. (b) Add to Existing is **not undoable** — per the recorded spike outcome (§4.6), it detaches the undo manager and clears the undo stack, exactly like board delete; ⌘Z after an Add import does nothing. (c) Replace All Boards deletes the existing boards first, is also not undoable and clears the undo stack, and is unavailable for a zero-board backup. (d) Given an invalid file (malformed JSON, missing required fields, or an unsupported `formatVersion`), when the user attempts to import it, then nothing is imported and an error is shown stating the existing boards are unchanged. **The `NSOpenPanel` leg is manually verified (2026-07-08, PASS), not XCUITest-driven** — same platform-limitation class as E-01's save panel above; import CONTENT correctness (round trip, replace, invalid-file, and dialog-cancel behavior) is fully automated via the sanctioned `--import-from`/`--import-mode` test-only launch hooks, which decode and import outside the open panel.
 
 ### 9.7 Undo/Redo
 
@@ -473,7 +474,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - L-04 Collapse/expand lists
 - C-09 Card activity log
 - LB-03 Search/filter by label (⌘F)
-- E-02 Backup/restore — import exported JSON
+- E-02 Backup/restore — import exported JSON (shipped post-MVP; Add to Existing / Replace All, neither undoable — see §4.6)
 - Optional due-date time-of-day (`includesTime`)
 - Custom-theme dark/light contrast audit & accessibility polish
 - Trello import (from Trello's JSON export)
