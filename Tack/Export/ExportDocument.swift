@@ -25,6 +25,9 @@ struct ExportEnvelope: Codable, Equatable {
 struct ExportBoard: Codable, Equatable {
     var name: String
     var emoji: String?
+    // Defaulted (unlike `emoji`) so pre-v2 call sites that predate this field keep compiling;
+    // decoding is unaffected either way — a missing JSON key always decodes an Optional as nil.
+    var about: String? = nil
     var position: Int
     var themeName: String
     var customThemeHex: String?
@@ -57,7 +60,9 @@ struct ExportCard: Codable, Equatable {
 
 enum ExportDocument {
     /// The current export schema version. Bump only alongside an importer migration (E-02).
-    static let formatVersion = 1
+    /// v2 (M-A): + ExportBoard.about. The import gate accepts 1...formatVersion; older files
+    /// decode missing fields as nil.
+    static let formatVersion = 2
 
     /// Maps live boards (in position order) to the export envelope. Read-only. `@MainActor`
     /// because it reads SwiftData model properties. `exportedAt` is injectable for deterministic
@@ -76,6 +81,7 @@ enum ExportDocument {
         ExportBoard(
             name: board.name,
             emoji: board.emoji,
+            about: board.about,
             position: board.position,
             themeName: board.themeName,
             customThemeHex: board.customThemeHex,
@@ -136,7 +142,7 @@ enum ExportDocument {
         } catch {
             throw ImportError.unreadable(detail: String(describing: error))
         }
-        guard envelope.formatVersion == formatVersion else {
+        guard (1...formatVersion).contains(envelope.formatVersion) else {
             throw ImportError.unsupportedVersion(envelope.formatVersion)
         }
         return sanitized(envelope, calendar: calendar)
@@ -233,7 +239,7 @@ enum ImportError: Error, Equatable, LocalizedError {
         case .unreadable:
             return "This file couldn't be read as a Tack export. It may be damaged or not a Tack export file."
         case .unsupportedVersion(let version):
-            return "This file uses export format version \(version). This version of Tack can only import version 1."
+            return "This file uses export format version \(version). This version of Tack can import versions 1 through \(ExportDocument.formatVersion)."
         case .emptyReplace:
             return "This backup contains no boards, so it can't replace your existing boards."
         case .saveFailed(let detail):

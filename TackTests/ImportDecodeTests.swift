@@ -66,13 +66,22 @@ struct ImportDecodeTests {
         catch { Issue.record("expected ImportError, got \(error)") }
     }
 
-    @Test("formatVersion 2 and 0 throw .unsupportedVersion carrying the file's version")
+    @Test("formatVersion 3 and 0 throw .unsupportedVersion carrying the file's version")
     func versionGate() {
-        for version in [2, 0] {
+        for version in [3, 0] {
             do { _ = try ExportDocument.decodeForImport(json("", formatVersion: version)) }
             catch let error as ImportError { #expect(error == .unsupportedVersion(version)) }
             catch { Issue.record("expected ImportError, got \(error)") }
         }
+    }
+
+    @Test("a version-1 file (no `about` key) still imports; about decodes nil")
+    func v1FileStillImports() throws {
+        // A version-1 file (no `about` keys) must decode under the tolerant gate with about == nil.
+        let data = json(boardJSON(cards: ""), formatVersion: 1)
+        let envelope = try ExportDocument.decodeForImport(data)
+        #expect(envelope.formatVersion == 1)
+        #expect(envelope.boards.first?.about == nil)
     }
 
     @Test("fractional-second ISO dates throw .unreadable (Foundation .iso8601 rejects them)")

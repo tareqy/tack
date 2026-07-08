@@ -14,11 +14,11 @@ struct BoardStoreImportTests {
     private func sampleEnvelope() -> ExportEnvelope {
         let created = Date(timeIntervalSince1970: 1_750_000_000)
         return ExportEnvelope(
-            formatVersion: 1,
+            formatVersion: 1, // deliberately v1: exercises the tolerant gate
             exportedAt: Date(timeIntervalSince1970: 1_781_827_200),
             boards: [
                 ExportBoard(
-                    name: "Imported A", emoji: "📦", position: 99, themeName: "ocean",
+                    name: "Imported A", emoji: "📦", about: "Imported note", position: 99, themeName: "ocean",
                     customThemeHex: "FF8800", createdAt: created,
                     lists: [
                         ExportList(name: "Alpha", position: 7, isCollapsed: true, cards: [
@@ -62,6 +62,7 @@ struct BoardStoreImportTests {
 
         let boardA = boards[0]
         #expect(boardA.emoji == "📦")
+        #expect(boardA.about == "Imported note")
         #expect(boardA.themeName == "ocean")
         #expect(boardA.customThemeHex == "FF8800")
         #expect(boardA.createdAt == Date(timeIntervalSince1970: 1_750_000_000))
@@ -224,12 +225,12 @@ struct BoardStoreImportTests {
 
     @Test("export → import into a fresh store → re-export reproduces the original bytes")
     func byteEqualityRoundTrip() throws {
-        // Container A: seed via store ops, exercising EVERY format field — emoji, theme + custom
-        // hex, a collapsed list, details, multiple labels, a due date (includesTime false).
+        // Container A: seed via store ops, exercising EVERY format field — emoji, about, theme +
+        // custom hex, a collapsed list, details, multiple labels, a due date (includesTime false).
         let a = TestContainer()
         defer { withExtendedLifetime(a) {} }
         a.store.ensureLabelsSeeded()
-        let alpha = a.store.createBoard(name: "Alpha", emoji: "🅰️")
+        let alpha = a.store.createBoard(name: "Alpha", emoji: "🅰️", about: "Weekly notes")
         a.store.setTheme(alpha, themeName: "ocean", customHex: "#ff8800")
         let alphaLists = alpha.sortedLists
         a.store.setCollapsed(alphaLists[1], true)

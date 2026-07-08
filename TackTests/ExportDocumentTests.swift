@@ -22,16 +22,16 @@ struct ExportDocumentTests {
         try body(boards)
     }
 
-    @Test("formatVersion is 1 and present in the encoded JSON")
-    func formatVersionIsOne() throws {
+    @Test("formatVersion is 2 and present in the encoded JSON")
+    func formatVersionIsTwo() throws {
         try withStandardBoards { boards in
             let envelope = ExportDocument.makeEnvelope(boards: boards)
-            #expect(envelope.formatVersion == 1)
+            #expect(envelope.formatVersion == 2)
 
             let json = String(data: try ExportDocument.encode(envelope), encoding: .utf8)!
             #expect(json.contains("\"formatVersion\""))
-            // The value round-trips as 1 regardless of pretty-print spacing.
-            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 1)
+            // The value round-trips as 2 regardless of pretty-print spacing.
+            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 2)
         }
     }
 
@@ -48,6 +48,7 @@ struct ExportDocumentTests {
             #expect(decoded.boards.map(\.emoji) == ["🛒", "💼"])
 
             let groceries = decoded.boards[0]
+            #expect(groceries.about == "Weekly shopping run", "the fixture's about note round-trips")
             #expect(groceries.lists.map(\.name) == ["To Do", "In Progress", "Done"])
             #expect(groceries.lists.map(\.position) == [0, 1, 2])
             #expect(groceries.lists.allSatisfy { !$0.isCollapsed })
@@ -120,6 +121,6 @@ struct ExportDocumentTests {
 
         let decoded = try ExportDocument.decode(try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)))
         #expect(decoded.boards.isEmpty)
-        #expect(decoded.formatVersion == 1)
+        #expect(decoded.formatVersion == 2)
     }
 }

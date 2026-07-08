@@ -495,6 +495,7 @@ final class BoardStore {
             let board = Board(
                 name: exportBoard.name,
                 emoji: exportBoard.emoji,
+                about: exportBoard.about,
                 position: basePosition + boardIndex,
                 themeName: exportBoard.themeName,
                 customThemeHex: exportBoard.customThemeHex,
