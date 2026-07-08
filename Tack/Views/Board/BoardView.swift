@@ -116,22 +116,37 @@ struct BoardView: View {
     }
 
     private var header: some View {
-        // Emoji and name as separate runs: interpolated into one largeTitle string, the emoji
-        // rendered at full 26pt and outweighed the board name; here the name carries the weight
-        // and the emoji sits a step down, on the shared baseline.
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(board.emoji ?? "🗂️")
-                .font(.title2)
-            Text(board.name)
-                .font(.largeTitle.weight(.semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
+        // M-A: the about subtitle is a SIBLING of the combined emoji+name element below, not a
+        // child inside it — `.combine` collapses its children into one atomic AX element, which
+        // would swallow the subtitle's own identifier (see CLAUDE.md: ancestor ids shadow
+        // children; combined elements are atomic under AX). Keeping it outside lets XCUITest
+        // resolve `boardAboutSubtitle` independently while `boardDetail` stays untouched.
+        VStack(alignment: .leading, spacing: 2) {
+            // Emoji and name as separate runs: interpolated into one largeTitle string, the emoji
+            // rendered at full 26pt and outweighed the board name; here the name carries the weight
+            // and the emoji sits a step down, on the shared baseline.
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(board.emoji ?? "🗂️")
+                    .font(.title2)
+                Text(board.name)
+                    .font(.largeTitle.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            // `.combine` (not `.contain`): same trap as the placeholder this view replaces — see
+            // `RootView` for the full write-up of why `board-detail` must stay a `.combine` leaf,
+            // not a `.contain` ancestor of the columns below it.
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(AccessibilityID.boardDetail)
+
+            if let about = board.about, !about.isEmpty {
+                Text(about)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier(AccessibilityID.boardAboutSubtitle)
+            }
         }
-        // `.combine` (not `.contain`): same trap as the placeholder this view replaces — see
-        // `RootView` for the full write-up of why `board-detail` must stay a `.combine` leaf,
-        // not a `.contain` ancestor of the columns below it.
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(AccessibilityID.boardDetail)
     }
 
     private var columnsScrollView: some View {

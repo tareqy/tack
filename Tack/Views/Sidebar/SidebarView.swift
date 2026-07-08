@@ -8,7 +8,7 @@ struct SidebarView: View {
     @Binding var selection: UUID?
 
     @State private var filterQuery = ""
-    @State private var renamingBoard: Board?
+    @State private var editingBoard: Board?
     @State private var boardPendingDeletion: Board?
 
     private var filteredBoards: [Board] {
@@ -40,7 +40,7 @@ struct SidebarView: View {
                 ForEach(filteredBoards) { board in
                     BoardRowView(board: board)
                         .contextMenu {
-                            Button("Rename…") { renamingBoard = board }
+                            Button("Edit Board…") { editingBoard = board }
                             Button("Delete", role: .destructive) { boardPendingDeletion = board }
                         }
                 }
@@ -50,8 +50,8 @@ struct SidebarView: View {
         }
         // The "New Board" toolbar button lives on `RootView`'s `NavigationSplitView`, not here —
         // see the comment there for why a toolbar contributed from this view doesn't work.
-        .sheet(item: $renamingBoard) { board in
-            RenameBoardSheet(board: board, store: store)
+        .sheet(item: $editingBoard) { board in
+            EditBoardSheet(board: board, store: store)
         }
         .confirmationDialog(
             deleteDialogTitle,

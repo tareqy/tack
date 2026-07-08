@@ -36,8 +36,12 @@ enum AccessibilityID {
     static let boardNameField = "board-name-field"
     static let boardEmojiField = "board-emoji-field"
     static let createBoardConfirm = "create-board-confirm"
-    static let renameBoardField = "rename-board-field"
-    static let renameBoardConfirm = "rename-board-confirm"
+    static let editBoardNameField = "edit-board-name-field"
+    static let editBoardEmojiField = "edit-board-emoji-field"
+    static let editBoardAboutField = "edit-board-about-field"
+    static let editBoardConfirm = "edit-board-confirm"
+    static let boardAboutField = "board-about-field"
+    static let boardAboutSubtitle = "board-about-subtitle"
     static let deleteBoardConfirm = "delete-board-confirm"
 
     // MARK: - M4: lists UI

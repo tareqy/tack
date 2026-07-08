@@ -1,17 +1,24 @@
 import SwiftUI
 
-/// Presented both from the sidebar's "New Board" toolbar button and from `EmptyStateView`'s
-/// "Create your first board" button — same sheet, same behavior, either entry point.
-struct CreateBoardSheet: View {
+/// The unified board-edit sheet (M-A): name + emoji + about, opened from the sidebar row's
+/// context menu. Grew out of RenameBoardSheet; commits everything through ONE
+/// `store.editBoard` call = one "Edit Board" undo step.
+struct EditBoardSheet: View {
+    let board: Board
     let store: BoardStore
-    /// Called with the newly created board right before the sheet dismisses, so the caller can
-    /// select it.
-    let onCreated: (Board) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var emoji = ""
-    @State private var about = ""
+    @State private var name: String
+    @State private var emoji: String
+    @State private var about: String
+
+    init(board: Board, store: BoardStore) {
+        self.board = board
+        self.store = store
+        _name = State(initialValue: board.name)
+        _emoji = State(initialValue: board.emoji ?? "")
+        _about = State(initialValue: board.about ?? "")
+    }
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -19,18 +26,18 @@ struct CreateBoardSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New Board")
+            Text("Edit Board")
                 .font(.headline)
 
             TextField("Board name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .reportsTextInputFocus()
-                .accessibilityIdentifier(AccessibilityID.boardNameField)
+                .accessibilityIdentifier(AccessibilityID.editBoardNameField)
 
             TextField("Emoji (optional)", text: $emoji)
                 .textFieldStyle(.roundedBorder)
                 .reportsTextInputFocus()
-                .accessibilityIdentifier(AccessibilityID.boardEmojiField)
+                .accessibilityIdentifier(AccessibilityID.editBoardEmojiField)
                 .onChange(of: emoji) { _, newValue in
                     // Keep the LAST grapheme: a picked/typed replacement wins over the old
                     // emoji (prefix(1) silently discarded palette insertions — M-A fix).
@@ -42,25 +49,24 @@ struct CreateBoardSheet: View {
             TextField("About (optional)", text: $about)
                 .textFieldStyle(.roundedBorder)
                 .reportsTextInputFocus()
-                .accessibilityIdentifier(AccessibilityID.boardAboutField)
+                .accessibilityIdentifier(AccessibilityID.editBoardAboutField)
 
             HStack {
                 Spacer()
-                // Esc must cancel any sheet (HIG); unlike alerts, a sheet's `.cancel`-role button
-                // gets no automatic Esc binding — the card-detail sheet already does this.
+                // Esc must cancel any sheet (HIG) — same one-liner as CreateBoardSheet.
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Create") {
+                Button("Save") {
                     let trimmedAbout = about.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let created = store.createBoard(name: trimmedName,
-                                                     emoji: emoji.isEmpty ? nil : emoji,
-                                                     about: trimmedAbout.isEmpty ? nil : trimmedAbout)
-                    onCreated(created)
+                    store.editBoard(board,
+                                    name: trimmedName,
+                                    emoji: emoji.isEmpty ? nil : emoji,
+                                    about: trimmedAbout.isEmpty ? nil : trimmedAbout)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(trimmedName.isEmpty)
-                .accessibilityIdentifier(AccessibilityID.createBoardConfirm)
+                .accessibilityIdentifier(AccessibilityID.editBoardConfirm)
             }
         }
         .padding(20)

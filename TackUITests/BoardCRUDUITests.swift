@@ -1,7 +1,8 @@
 import XCTest
 
-/// Board sidebar CRUD: create (from the toolbar button and from the empty state), rename,
-/// delete (with confirmation), and filter. Fixture "standard" unless a test states otherwise.
+/// Board sidebar CRUD: create (from the toolbar button and from the empty state), edit
+/// (name/emoji/about via the unified `EditBoardSheet`), delete (with confirmation), and filter.
+/// Fixture "standard" unless a test states otherwise.
 final class BoardCRUDUITests: TackUITestCase {
 
     private let timeout: TimeInterval = 15
@@ -18,6 +19,9 @@ final class BoardCRUDUITests: TackUITestCase {
         boardNameField.typeText("Alpha")
         boardEmojiField.click()
         boardEmojiField.typeText("🚀")
+        let aboutField = element(AccessibilityID.boardAboutField)
+        aboutField.click()
+        aboutField.typeText("Launch prep")
         createBoardConfirmButton.click()
 
         let row = boardRow("Alpha")
@@ -26,6 +30,8 @@ final class BoardCRUDUITests: TackUITestCase {
         // reliable XCUITest signal for a SwiftUI List row's combined accessibility element).
         XCTAssertTrue(poll(timeout: timeout) { self.boardDetail.exists && self.combinedText(self.boardDetail).contains("Alpha") },
                       "board-detail should show the newly created board, proving it is selected")
+        XCTAssertTrue(element(AccessibilityID.boardAboutSubtitle).waitForExistence(timeout: timeout),
+                      "about subtitle should show after creating a board with an about")
     }
 
     func testCreateFromEmptyState() {
@@ -89,26 +95,68 @@ final class BoardCRUDUITests: TackUITestCase {
                       "⌘Z should fully undo the create — board-Probe should be gone from the sidebar")
     }
 
-    // MARK: - Rename
+    // MARK: - Edit (rename, emoji, about)
 
-    func testRenameBoard() {
+    func testEditBoardRenames() {
         launch(fixture: "standard")
 
         let workRow = boardRow("Work")
         XCTAssertTrue(workRow.waitForExistence(timeout: timeout))
         workRow.rightClick()
-        contextMenuItem("Rename…").click()
+        contextMenuItem("Edit Board…").click()
 
-        XCTAssertTrue(renameBoardField.waitForExistence(timeout: timeout))
-        renameBoardField.click()
+        XCTAssertTrue(editBoardNameField.waitForExistence(timeout: timeout))
+        editBoardNameField.click()
         // Clear the pre-filled "Work" text before typing the new name.
-        selectAllAndDelete(renameBoardField)
-        renameBoardField.typeText("Work II")
-        renameBoardConfirmButton.click()
+        selectAllAndDelete(editBoardNameField)
+        editBoardNameField.typeText("Work II")
+        editBoardConfirmButton.click()
 
         XCTAssertTrue(poll(timeout: timeout) { self.boardRow("Work II").exists },
                       "board-Work II row should appear after rename")
         XCTAssertFalse(boardRow("Work").exists, "old board-Work row should be gone")
+    }
+
+    /// M-A: the edit sheet edits emoji and about; clearing the emoji falls back to 🗂️ in the row.
+    func testEditBoardEmojiAndAbout() {
+        launch(fixture: "standard")
+
+        boardRow("Work").rightClick()
+        contextMenuItem("Edit Board…").click()
+        let emojiField = element(AccessibilityID.editBoardEmojiField)
+        XCTAssertTrue(emojiField.waitForExistence(timeout: timeout))
+        XCTAssertEqual(emojiField.value as? String, "💼", "edit sheet should seed the current emoji")
+
+        emojiField.click()
+        selectAllAndDelete(emojiField)
+        let aboutField = element(AccessibilityID.editBoardAboutField)
+        aboutField.click()
+        aboutField.typeText("Client projects")
+        element(AccessibilityID.editBoardConfirm).click()
+
+        // Emoji cleared → 🗂️ fallback in the sidebar row's combined text.
+        XCTAssertTrue(poll(timeout: timeout) { self.boardRow("Work").exists })
+        // Reopen: fields reflect committed values.
+        boardRow("Work").rightClick()
+        contextMenuItem("Edit Board…").click()
+        XCTAssertEqual(element(AccessibilityID.editBoardEmojiField).value as? String, "",
+                       "cleared emoji should reopen empty")
+        XCTAssertEqual(element(AccessibilityID.editBoardAboutField).value as? String, "Client projects")
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// M-A: about shows as a subtitle under the board header, nil-collapsing.
+    func testAboutSubtitleShowsWhenSet() {
+        launch(fixture: "standard")
+
+        // Groceries has a fixture about; Work does not.
+        boardRow("Groceries").click()
+        let subtitle = element(AccessibilityID.boardAboutSubtitle)
+        XCTAssertTrue(subtitle.waitForExistence(timeout: timeout),
+                      "Groceries should show its about subtitle")
+        boardRow("Work").click()
+        XCTAssertTrue(poll(timeout: timeout) { !subtitle.exists },
+                      "Work has no about — subtitle must fully collapse")
     }
 
     // MARK: - Delete
@@ -220,12 +268,12 @@ final class BoardCRUDUITests: TackUITestCase {
         app.descendants(matching: .any)[AccessibilityID.createBoardConfirm]
     }
 
-    private var renameBoardField: XCUIElement {
-        app.descendants(matching: .any)[AccessibilityID.renameBoardField]
+    private var editBoardNameField: XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.editBoardNameField]
     }
 
-    private var renameBoardConfirmButton: XCUIElement {
-        app.descendants(matching: .any)[AccessibilityID.renameBoardConfirm]
+    private var editBoardConfirmButton: XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.editBoardConfirm]
     }
 
     private var boardDetail: XCUIElement {
@@ -238,6 +286,10 @@ final class BoardCRUDUITests: TackUITestCase {
 
     private func anyCard(_ title: String) -> XCUIElement {
         app.descendants(matching: .any)[AccessibilityID.card(title)]
+    }
+
+    private func element(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
     }
 
     private func selectAllAndDelete(_ field: XCUIElement) {
