@@ -146,4 +146,113 @@ struct BoardStoreImportTests {
         #expect(fetchBoards(env.context).isEmpty)
         #expect(env.undoManager!.canUndo == false, "no empty 'Import Boards' group on the stack")
     }
+
+    @Test("empty-envelope append preserves existing undo history (early return precedes the detach)")
+    func emptyEnvelopeAppendPreservesUndoHistory() throws {
+        let env = TestContainer(withUndo: true)
+        defer { withExtendedLifetime(env) {} }
+        env.store.ensureLabelsSeeded()
+        env.store.createBoard(name: "Existing", emoji: nil)
+        #expect(env.undoManager!.canUndo == true, "precondition: something undoable exists")
+
+        let empty = ExportEnvelope(formatVersion: 1, exportedAt: .now, boards: [])
+        let imported = try env.store.importBoards(empty)
+
+        #expect(imported.isEmpty)
+        #expect(env.undoManager!.canUndo == true, "an empty Add must not clear the stack (unlike a real import)")
+    }
+
+    @Test("a label name with no palette row is skipped, never inserted")
+    func missingPaletteRowSkipped() throws {
+        let env = TestContainer()
+        defer { withExtendedLifetime(env) {} }
+        // Deliberately DO NOT seed the palette: every label lookup misses, exercising
+        // materialize's skip-never-insert guard directly.
+        let imported = try env.store.importBoards(sampleEnvelope())
+
+        #expect(fetchLabels(env.context).isEmpty, "materialize must never insert CardLabel rows")
+        #expect(imported[0].sortedLists[0].sortedCards[0].labels.isEmpty)
+    }
+
+    // MARK: - Replace mode (Task 4)
+
+    @Test("replace deletes existing boards; only envelope boards remain; palette stays 8")
+    func replaceDeletesExisting() throws {
+        let env = TestContainer()
+        defer { withExtendedLifetime(env) {} }
+        env.store.ensureLabelsSeeded()
+        env.store.createBoard(name: "Old 1", emoji: nil)
+        env.store.createBoard(name: "Old 2", emoji: nil)
+
+        let imported = try env.store.replaceAllBoards(with: sampleEnvelope())
+
+        #expect(fetchBoards(env.context).map(\.name) == ["Imported A", "Imported B"])
+        #expect(fetchBoards(env.context).map(\.position) == [0, 1], "replace re-bases at position 0")
+        #expect(fetchLabels(env.context).count == 8)
+        #expect(imported.map(\.name) == ["Imported A", "Imported B"])
+    }
+
+    @Test("replace clears the undo stack (never undoable)")
+    func replaceClearsUndoStack() throws {
+        let env = TestContainer(withUndo: true)
+        defer { withExtendedLifetime(env) {} }
+        env.store.ensureLabelsSeeded()
+        env.store.createBoard(name: "Old", emoji: nil)
+        #expect(env.undoManager!.canUndo == true, "precondition: something undoable exists")
+
+        try env.store.replaceAllBoards(with: sampleEnvelope())
+
+        #expect(env.undoManager!.canUndo == false)
+        #expect(env.undoManager!.canRedo == false)
+    }
+
+    @Test("replace with an empty envelope throws .emptyReplace and mutates nothing")
+    func replaceEmptyThrowsAndMutatesNothing() throws {
+        let env = TestContainer()
+        defer { withExtendedLifetime(env) {} }
+        env.store.ensureLabelsSeeded()
+        env.store.createBoard(name: "Survivor", emoji: nil)
+
+        let empty = ExportEnvelope(formatVersion: 1, exportedAt: .now, boards: [])
+        #expect(throws: ImportError.emptyReplace) {
+            try env.store.replaceAllBoards(with: empty)
+        }
+        #expect(fetchBoards(env.context).map(\.name) == ["Survivor"])
+    }
+
+    // MARK: - Byte-equality round trip (Task 4; the strongest cheap oracle)
+
+    @Test("export → import into a fresh store → re-export reproduces the original bytes")
+    func byteEqualityRoundTrip() throws {
+        // Container A: seed via store ops, exercising EVERY format field — emoji, theme + custom
+        // hex, a collapsed list, details, multiple labels, a due date (includesTime false).
+        let a = TestContainer()
+        defer { withExtendedLifetime(a) {} }
+        a.store.ensureLabelsSeeded()
+        let alpha = a.store.createBoard(name: "Alpha", emoji: "🅰️")
+        a.store.setTheme(alpha, themeName: "ocean", customHex: "#ff8800")
+        let alphaLists = alpha.sortedLists
+        a.store.setCollapsed(alphaLists[1], true)
+        let cardOne = a.store.addCard(to: alphaLists[0], title: "Card One")
+        a.store.applyCardEdits(cardOne, title: "Card One", details: "line1\nline2",
+                               labels: [.red, .blue], dueDate: Date(timeIntervalSince1970: 1_781_800_000))
+        a.store.addCard(to: alphaLists[0], title: "Card Two")
+        a.store.createBoard(name: "Beta", emoji: nil)
+
+        let fixedExportedAt = Date(timeIntervalSince1970: 1_781_827_200)
+        let aBoards = fetchBoards(a.context)
+        let original = try ExportDocument.encode(ExportDocument.makeEnvelope(boards: aBoards, exportedAt: fixedExportedAt))
+
+        // Container B: fresh, PALETTE SEEDED FIRST (TestContainer does not seed it; an unseeded B
+        // would silently drop every label), import through the full production decode path.
+        let b = TestContainer()
+        defer { withExtendedLifetime(b) {} }
+        b.store.ensureLabelsSeeded()
+        try b.store.importBoards(try ExportDocument.decodeForImport(original))
+
+        let bBoards = fetchBoards(b.context)
+        let reExported = try ExportDocument.encode(ExportDocument.makeEnvelope(boards: bBoards, exportedAt: fixedExportedAt))
+        #expect(reExported == original,
+                "byte-stable round trip: positions, label order, dates, theme, collapse state all survive")
+    }
 }

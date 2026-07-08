@@ -432,6 +432,40 @@ final class BoardStore {
         return imported
     }
 
+    /// Replace-mode import: deletes EVERY existing board, then materializes the envelope from
+    /// position 0. ALWAYS non-undoable — `deleteBoard`'s detach discipline verbatim (see that
+    /// method's evidence for why an on-disk Board delete with an attached manager fatally
+    /// asserts): manager detached for the whole delete + materialize + save span, reattached +
+    /// stack cleared in a defer (prior undo groups reference the deleted boards). Delete and
+    /// insert share the ONE save, so a failed replace can never leave deleted-but-not-replaced
+    /// data (rollback revives the unsaved deletes).
+    ///
+    /// Guards `.emptyReplace` as the store-level backstop behind the dialog's omitted Replace
+    /// button: a zero-board envelope must never be able to wipe the store.
+    @discardableResult
+    func replaceAllBoards(with envelope: ExportEnvelope, importedAt: Date = .now) throws -> [Board] {
+        guard !envelope.boards.isEmpty else { throw ImportError.emptyReplace }
+
+        let held = context.undoManager
+        context.undoManager = nil
+        defer {
+            context.undoManager = held
+            held?.removeAllActions()
+        }
+
+        for board in fetchBoards() {
+            context.delete(board)
+        }
+        let imported = materialize(envelope, basePosition: 0, importedAt: importedAt)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw ImportError.saveFailed(detail: error.localizedDescription)
+        }
+        return imported
+    }
+
     /// Direct memberwise materialization of an import envelope. Fresh UUIDs (the format carries
     /// none); board positions `basePosition + arrayIndex`; list/card positions from array
     /// enumeration — DTO position fields are dead by construction (never read, so hand-edited
