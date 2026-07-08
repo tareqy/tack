@@ -36,43 +36,47 @@ struct CardDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    TextField("Title", text: $title)
-                        .textFieldStyle(.plain)
-                        .font(.title2)
+            VStack(alignment: .leading, spacing: 20) {
+                TextField("Title", text: $title)
+                    .textFieldStyle(.plain)
+                    .font(.title2)
+                    .reportsTextInputFocus()
+                    .accessibilityIdentifier(AccessibilityID.cardDetailTitleField)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Brief")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // Native editable-text-area dressing (an NSTextView look: text background
+                    // + separator hairline) — the old secondary wash read as a disabled
+                    // control, especially in dark mode. NO `.scrollContentBackground(.hidden)`:
+                    // SwiftUI's macOS TextEditor is already transparent (the old wash showed
+                    // through without it), and adding it made the whole editor report
+                    // AX-Disabled under XCUITest, killing keyboard-focus synthesis (caught by
+                    // testEditDescriptionSavesAndPersists).
+                    // The editor is the ONE flexible element in the sheet: bounded frame +
+                    // layoutPriority means long text scrolls INSIDE the editor (NSTextView's
+                    // own scrolling) while Labels/Due Date stay pinned below — there is
+                    // deliberately no outer ScrollView (caught by
+                    // testLongBriefScrollsInsideEditorNotSheet).
+                    TextEditor(text: $details)
+                        .font(.body)
                         .reportsTextInputFocus()
-                        .accessibilityIdentifier(AccessibilityID.cardDetailTitleField)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Brief")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        // Native editable-text-area dressing (an NSTextView look: text background
-                        // + separator hairline) — the old secondary wash read as a disabled
-                        // control, especially in dark mode. NO `.scrollContentBackground(.hidden)`:
-                        // SwiftUI's macOS TextEditor is already transparent (the old wash showed
-                        // through without it), and adding it made the whole editor report
-                        // AX-Disabled under XCUITest, killing keyboard-focus synthesis (caught by
-                        // testEditDescriptionSavesAndPersists).
-                        TextEditor(text: $details)
-                            .font(.body)
-                            .reportsTextInputFocus()
-                            .frame(minHeight: 120)
-                            .padding(4)
-                            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                            // Hairline must NOT hit-test: a SwiftUI overlay above an AppKit-backed
-                            // editor intercepts the click that gives the NSTextView keyboard focus
-                            // (caught by testEditDescriptionSavesAndPersists).
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false))
-                            .accessibilityIdentifier(AccessibilityID.cardDetailDescriptionField)
-                    }
-
-                    LabelPicker(selected: $labels)
-                    DueDatePicker(dueDate: $dueDate)
+                        .frame(minHeight: 120, maxHeight: .infinity)
+                        .layoutPriority(1)
+                        .padding(4)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                        // Hairline must NOT hit-test: a SwiftUI overlay above an AppKit-backed
+                        // editor intercepts the click that gives the NSTextView keyboard focus
+                        // (caught by testEditDescriptionSavesAndPersists).
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false))
+                        .accessibilityIdentifier(AccessibilityID.cardDetailDescriptionField)
                 }
-                .padding(20)
+
+                LabelPicker(selected: $labels)
+                DueDatePicker(dueDate: $dueDate)
             }
+            .padding(20)
 
             Divider()
 

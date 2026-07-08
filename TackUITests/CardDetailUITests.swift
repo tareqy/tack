@@ -100,6 +100,28 @@ final class CardDetailUITests: TackUITestCase {
                        "description should persist across relaunch")
     }
 
+    /// M-0: long Brief text must scroll INSIDE the editor. Oracle: the due-date quick buttons
+    /// sit below the editor in the sheet — if the sheet-wide scroll bug regresses, the growing
+    /// editor pushes them off-screen and `isHittable` goes false.
+    func testLongBriefScrollsInsideEditorNotSheet() {
+        launch(fixture: "standard")
+
+        openDetailViaBodyDoubleClick("Call plumber")
+        let brief = element(AccessibilityID.cardDetailDescriptionField)
+        XCTAssertTrue(brief.waitForExistence(timeout: timeout))
+        brief.click()
+        let longText = Array(repeating: "brief line", count: 40).joined(separator: "\n")
+        brief.typeText(longText)
+
+        let today = element(AccessibilityID.dueQuickToday)
+        XCTAssertTrue(today.exists, "due-date quick buttons should exist below the editor")
+        XCTAssertTrue(today.isHittable,
+                      "long Brief text must scroll inside the editor, not push the due-date section off-screen")
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+    }
+
     func testToggleLabelsReflectOnCardFace() {
         launch(fixture: "standard")
 
