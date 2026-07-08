@@ -25,6 +25,18 @@ struct RootView: View {
     private let exportToFilename: String?
     @State private var exportSelfCheck: String?
 
+    /// E-02 import (⇧⌘I): file picked → decoded+sanitized envelope parks here until the user
+    /// chooses a mode in the confirmation dialog.
+    struct PendingImport: Identifiable {
+        let id = UUID()
+        let envelope: ExportEnvelope
+        let filename: String
+    }
+
+    @State private var isPresentingImporter = false
+    @State private var pendingImport: PendingImport?
+    @State private var importError: ImportError?
+
     init(config: AppLaunchConfig) {
         _selectedBoardIDRaw = AppStorage(config.selectedBoardDefaultsKey)
         // Test-only affordance — honored ONLY under --uitest (mirrors how --appearance is gated
@@ -117,6 +129,48 @@ struct RootView: View {
         ) { _ in
             exportDocument = nil
         }
+        // E-02: the JSON import open panel (hosted here for the same Commands-can't-present
+        // reason as the exporter above).
+        .fileImporter(
+            isPresented: $isPresentingImporter,
+            allowedContentTypes: [.json]
+        ) { result in
+            handlePickedImportFile(result)
+        }
+        // E-02: the mode chooser. Replace is omitted for a zero-board envelope (the one
+        // total-data-loss vector); the store's .emptyReplace guard is the backstop.
+        .confirmationDialog(
+            importDialogTitle,
+            isPresented: Binding(
+                get: { pendingImport != nil },
+                set: { if !$0 { pendingImport = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingImport
+        ) { pending in
+            Button("Add to Existing") { completeImport(pending, replacing: false) }
+            if !pending.envelope.boards.isEmpty {
+                Button("Replace All Boards", role: .destructive) { completeImport(pending, replacing: true) }
+            }
+            Button("Cancel", role: .cancel) { cancelImport() }
+        } message: { pending in
+            Text(importDialogMessage(pending))
+        }
+        // E-02: the app's first user-facing error alert. Every error reaching here is an
+        // ImportError (the store wraps save failures), so the copy is always specific and always
+        // ends in the atomicity guarantee.
+        .alert(
+            "Import Failed",
+            isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            ),
+            presenting: importError
+        ) { _ in
+            Button("OK", role: .cancel) { importError = nil }
+        } message: { error in
+            Text([error.errorDescription, error.recoverySuggestion].compactMap { $0 }.joined(separator: "\n\n"))
+        }
         // Always-present board-navigation command surface (New Board, ⌘1–⌘9, ⇧⌘E export) — see AppCommands.
         .focusedSceneValue(\.boardSelectionActions, boardSelectionActions)
     }
@@ -142,7 +196,8 @@ struct RootView: View {
                 selectedBoardID = ordered[position - 1].id
             },
             boardNames: sortedBoards.map(\.name),
-            exportAllBoards: presentExporter
+            exportAllBoards: presentExporter,
+            importBoards: { isPresentingImporter = true }
         )
     }
 
@@ -177,6 +232,77 @@ struct RootView: View {
         isPresentingExporter = true
     }
 
+    // MARK: - Import (E-02)
+
+    /// Reads and decodes the picked file. Security-scoped access: call `start` unconditionally
+    /// and gate ONLY the paired `stop` on its Bool — it returns false for URLs already covered by
+    /// the user-selected entitlement grant, so gating the READ on it would break legitimate
+    /// imports. The decoded envelope is parked in `pendingImport` on the NEXT main-queue tick:
+    /// flipping a confirmationDialog on in the same tick the fileImporter dismisses can silently
+    /// fail to present (verify the hop is needed by hand during implementation; record the result
+    /// in the spec).
+    private func handlePickedImportFile(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }   // panel cancel/error: no-op
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data: Data
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                throw ImportError.unreadable(detail: error.localizedDescription)
+            }
+            let envelope = try ExportDocument.decodeForImport(data)
+            let filename = url.lastPathComponent
+            DispatchQueue.main.async {
+                pendingImport = PendingImport(envelope: envelope, filename: filename)
+            }
+        } catch let error as ImportError {
+            importError = error
+        } catch {
+            importError = .unreadable(detail: error.localizedDescription)
+        }
+    }
+
+    private var importDialogTitle: String {
+        let count = pendingImport?.envelope.boards.count ?? 0
+        return "Import \(count) \(count == 1 ? "Board" : "Boards")"
+    }
+
+    private func importDialogMessage(_ pending: PendingImport) -> String {
+        let importedBoards = pending.envelope.boards
+        guard !importedBoards.isEmpty else {
+            return "“\(pending.filename)” contains no boards, so adding it changes nothing — and it can't replace your existing boards."
+        }
+        let listCount = importedBoards.reduce(0) { $0 + $1.lists.count }
+        let cardCount = importedBoards.reduce(0) { $0 + $1.lists.reduce(0) { $0 + $1.cards.count } }
+        return "“\(pending.filename)” contains \(importedBoards.count) board(s) (\(listCount) list(s), \(cardCount) card(s)). "
+            + "“Add to Existing” keeps your current \(boards.count) board(s) and adds the imported ones after them. "
+            + "“Replace All Boards” deletes your current board(s) first — replacing cannot be undone."
+    }
+
+    /// Shared completion for the dialog buttons AND the --import-from test hook (Task 6), so both
+    /// paths get identical store routing and post-import selection.
+    private func completeImport(_ pending: PendingImport, replacing: Bool) {
+        pendingImport = nil
+        do {
+            let imported = replacing
+                ? try store.replaceAllBoards(with: pending.envelope)
+                : try store.importBoards(pending.envelope)
+            if let first = imported.first {
+                selectedBoardID = first.id
+            }
+        } catch let error as ImportError {
+            importError = error
+        } catch {
+            importError = .saveFailed(detail: error.localizedDescription)
+        }
+    }
+
+    private func cancelImport() {
+        pendingImport = nil
+    }
+
     // MARK: - Undo wiring
 
     /// Identity of the current scene undo manager, so `onChange` can re-wire when the scene hands
@@ -208,7 +334,8 @@ struct RootView: View {
     @ViewBuilder
     private var detailContent: some View {
         if boards.isEmpty {
-            EmptyStateView(onCreateBoard: { isPresentingCreateBoard = true })
+            EmptyStateView(onCreateBoard: { isPresentingCreateBoard = true },
+                           onImportBoards: { isPresentingImporter = true })
         } else if let selectedBoard {
             BoardView(board: selectedBoard, store: store)
         } else {

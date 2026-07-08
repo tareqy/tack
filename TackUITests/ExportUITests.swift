@@ -58,18 +58,4 @@ final class ExportUITests: TackUITestCase {
 
     private var rootView: XCUIElement { app.descendants(matching: .any)[AccessibilityID.rootView] }
     private var boardDetail: XCUIElement { app.descendants(matching: .any)[AccessibilityID.boardDetail] }
-
-    private func openMenu(_ title: String) {
-        let bar = app.menuBars.menuBarItems[title]
-        XCTAssertTrue(bar.waitForExistence(timeout: timeout), "\(title) menu should exist in the menu bar")
-        bar.click()
-    }
-
-    private func closeMenu() {
-        app.typeKey(.escape, modifierFlags: [])
-    }
-
-    private func menuItem(_ title: String) -> XCUIElement {
-        app.menuBars.menuItems[title]
-    }
 }

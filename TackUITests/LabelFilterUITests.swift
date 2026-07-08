@@ -200,13 +200,4 @@ final class LabelFilterUITests: TackUITestCase {
         app.descendants(matching: .any)[identifier]
     }
 
-    private func openMenu(_ title: String) {
-        let bar = app.menuBars.menuBarItems[title]
-        XCTAssertTrue(bar.waitForExistence(timeout: timeout), "\(title) menu should exist in the menu bar")
-        bar.click()
-    }
-
-    private func menuItem(_ title: String) -> XCUIElement {
-        app.menuBars.menuItems[title]
-    }
 }

@@ -162,6 +162,22 @@ class TackUITestCase: XCTestCase {
         return nil
     }
 
+    // MARK: - Menus
+
+    func openMenu(_ title: String, timeout: TimeInterval = 15) {
+        let bar = app.menuBars.menuBarItems[title]
+        XCTAssertTrue(bar.waitForExistence(timeout: timeout), "\(title) menu should exist in the menu bar")
+        bar.click()
+    }
+
+    func closeMenu() {
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    func menuItem(_ title: String) -> XCUIElement {
+        app.menuBars.menuItems[title]
+    }
+
     // MARK: - Content
 
     /// The visible text of an `.accessibilityElement(children: .combine)` element (e.g.

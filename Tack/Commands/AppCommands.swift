@@ -41,6 +41,13 @@ struct AppCommands: Commands {
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(boardSelection?.boardNames.isEmpty != false)
 
+            // E-02 (⇧⌘I): import a JSON backup via the open panel (hosted by RootView, same
+            // constraint as the exporter). Enabled whenever RootView publishes the surface —
+            // including with zero boards (restore-into-empty is the headline case).
+            Button("Import Boards…") { guardedMutation { boardSelection?.importBoards() } }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(boardSelection == nil)
+
             Divider()
         }
 

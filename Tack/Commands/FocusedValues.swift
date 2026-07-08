@@ -53,6 +53,10 @@ struct BoardSelectionActions {
     /// presents the save panel (RootView owns the `.fileExporter`). Enablement keys off
     /// `boardNames` being non-empty (nothing to export with no boards).
     let exportAllBoards: () -> Void
+    /// E-02 / ⇧⌘I — File ▸ "Import Boards…": presents the JSON open panel (RootView hosts the
+    /// `.fileImporter` — a `Commands` value can't present one, same constraint as the exporter).
+    /// Always enabled, including at zero boards: restore-into-an-empty-app is the headline case.
+    let importBoards: () -> Void
 }
 
 // MARK: - FocusedValueKeys

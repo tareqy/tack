@@ -455,20 +455,6 @@ final class KeyboardShortcutUITests: TackUITestCase {
 
     // MARK: - Menu helpers
 
-    private func openMenu(_ title: String) {
-        let bar = app.menuBars.menuBarItems[title]
-        XCTAssertTrue(bar.waitForExistence(timeout: timeout), "\(title) menu should exist in the menu bar")
-        bar.click()
-    }
-
-    private func closeMenu() {
-        app.typeKey(.escape, modifierFlags: [])
-    }
-
-    private func menuItem(_ title: String) -> XCUIElement {
-        app.menuBars.menuItems[title]
-    }
-
     private func anyMenuItem(beginningWith prefix: String) -> XCUIElement {
         app.menuBars.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", prefix)).firstMatch
     }
