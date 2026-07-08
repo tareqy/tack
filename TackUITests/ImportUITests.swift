@@ -39,4 +39,97 @@ final class ImportUITests: TackUITestCase {
                       "the zero-board empty state should offer Import from Backup…")
         // Presence-only: clicking would open the un-drivable NSOpenPanel.
     }
+
+    // MARK: - Content e2es (via --export-to → --import-from; the panel itself is un-drivable)
+
+    private var importMarker: XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.importSelfCheck]
+    }
+    private var exportMarker: XCUIElement {
+        app.descendants(matching: .any)[AccessibilityID.exportSelfCheck]
+    }
+
+    private func markerValue(_ marker: XCUIElement) -> String? { marker.value as? String }
+
+    /// Launches the standard fixture with --export-to and waits until the export JSON is written
+    /// (the export marker publishing IS the write-complete signal), then terminates.
+    private func exportStandardFixture(to filename: String) {
+        launch(fixture: "standard", exportTo: filename)
+        XCTAssertTrue(poll(timeout: timeout) { exportMarker.exists && markerValue(exportMarker)?.isEmpty == false },
+                      "export self-check should publish before we relaunch to import")
+        app.terminate()
+    }
+
+    func testImportRoundTripRestoresBackup() {
+        exportStandardFixture(to: "import-roundtrip.json")
+
+        // Same auto-derived store name; --reset wipes only the sqlite files — the JSON survives.
+        launch(fixture: "empty", importFrom: "import-roundtrip.json")
+
+        XCTAssertTrue(poll(timeout: timeout) { importMarker.exists }, "import marker should publish")
+        XCTAssertEqual(markerValue(importMarker), "ok|Groceries,Work|Buy milk,Call plumber,Return library books",
+                       "live post-import store state should match the exported fixture")
+        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Groceries")].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Work")].exists)
+        // Post-import selection: the first imported board is shown in the detail pane.
+        let detail = app.descendants(matching: .any)[AccessibilityID.boardDetail]
+        XCTAssertTrue(poll(timeout: timeout) { detail.exists && combinedText(detail).contains("Groceries") },
+                      "the first imported board should be selected after import")
+
+        // Persistence leg: relaunchPreservingStore re-passes neither import flag (by design), and
+        // FixtureSeeder skips non-empty stores — so the boards must come from the persisted store.
+        relaunchPreservingStore()
+        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Groceries")].waitForExistence(timeout: timeout),
+                      "imported boards should survive a relaunch")
+    }
+
+    func testReplaceModeReplacesExistingBoards() {
+        exportStandardFixture(to: "import-replace.json")
+
+        // Import the standard fixture's own export INTO the standard fixture, replace mode.
+        launch(fixture: "standard", importFrom: "import-replace.json", importMode: "replace")
+
+        XCTAssertTrue(poll(timeout: timeout) { importMarker.exists })
+        XCTAssertEqual(markerValue(importMarker), "ok|Groceries,Work|Buy milk,Call plumber,Return library books",
+                       "exactly the two imported boards — replace, not append (append would list four)")
+        // Duplicate-count oracle: after replace exactly ONE row per name (append would show two).
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: AccessibilityID.board("Groceries")).count, 1)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: AccessibilityID.board("Work")).count, 1)
+        // Replace is never undoable and clears the stack.
+        openMenu("Edit")
+        let undoItem = app.menuBars.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'Undo'")).firstMatch
+        XCTAssertTrue(undoItem.waitForExistence(timeout: timeout))
+        XCTAssertFalse(undoItem.isEnabled, "Edit ▸ Undo should be disabled after a replace import")
+        closeMenu()
+    }
+
+    func testImportMissingFilePublishesErrorAndChangesNothing() {
+        launch(fixture: "standard", importFrom: "does-not-exist.json")
+
+        XCTAssertTrue(poll(timeout: timeout) { importMarker.exists })
+        XCTAssertEqual(markerValue(importMarker), "error|unreadable",
+                       "stable token, never localized alert copy")
+        // The production error alert also presented — dismiss it, then confirm nothing changed.
+        let ok = hittableButton("OK")
+        if ok.waitForExistence(timeout: 5) { ok.click() }
+        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Groceries")].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.board("Work")].exists)
+    }
+
+    func testImportDialogCancelDoesNothing() {
+        exportStandardFixture(to: "import-cancel.json")
+
+        // ask-mode presents the REAL mode dialog; drive its Cancel with the harness helper built
+        // for confirmationDialog buttons.
+        launch(fixture: "standard", importFrom: "import-cancel.json", importMode: "ask")
+
+        let cancel = hittableButton("Cancel")
+        XCTAssertTrue(cancel.waitForExistence(timeout: timeout), "the mode dialog should present under ask")
+        cancel.click()
+
+        XCTAssertTrue(poll(timeout: timeout) { markerValue(importMarker) == "cancelled" })
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: AccessibilityID.board("Groceries")).count, 1,
+                       "cancel imports nothing — no duplicate rows")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: AccessibilityID.board("Work")).count, 1)
+    }
 }
