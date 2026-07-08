@@ -51,6 +51,10 @@ final class ThemeUITests: TackUITestCase {
         groceriesRow.click()
 
         openThemePopover()
+
+        XCTAssertTrue(element(AccessibilityID.themeColorWell).exists,
+                      "the native color well should sit in the Custom section")
+
         let hexField = element(AccessibilityID.themeHexField)
         XCTAssertTrue(hexField.waitForExistence(timeout: timeout))
         hexField.click()

@@ -89,6 +89,7 @@ enum AccessibilityID {
     /// value is the board's emoji+name text (see `BoardView.header`), so folding the theme into it
     /// would clobber the existing regression assertions that check for the board's name there.
     static let boardThemeValue = "board-theme-value"
+    static let themeColorWell = "theme-color-well"
 
     // MARK: - M9: list collapse/expand
 

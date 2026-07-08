@@ -12,8 +12,9 @@ import SwiftUI
 /// the brief's "no crash, no commit" requirement. Picking a preset swatch commits immediately and
 /// leaves the popover open (transient popover: outside click or Esc closes it).
 ///
-/// The brief's optional `ColorPicker` is deliberately skipped: the hex field is the testable path,
-/// and per the brief's own escape hatch the picker is a nice-to-have only.
+/// M-A added the native ColorPicker well. The hex field remains the XCUITest-drivable path
+/// (NSColorPanel cannot be driven synthetically); the well's commits are verified through the
+/// board-theme-value marker + unit-tested ColorHexBridge.
 struct ThemeButton: View {
     /// The board shown in the detail pane, or nil when none is selected — the toolbar item stays
     /// PRESENT either way (HIG: stable toolbar geometry) and merely disables on nil.
@@ -23,12 +24,32 @@ struct ThemeButton: View {
     @State private var isPresented = false
     @State private var hexDraft = ""
     @State private var showsHexError = false
+    @State private var pickerColor: Color = .white
+    /// The hex `pickerColor` was just seeded to, or nil once a genuine user pick has been seen this
+    /// popover session. NSColorWell re-publishes its seeded value through `onChange` a moment after
+    /// attaching (an AppKit-bridging echo, not a user pick — confirmed via NSLog: it fires ~seconds
+    /// after seeding, sometimes mid-keystroke in the hex field) — without this guard that echo
+    /// stomps `hexDraft` out from under a concurrent hex-field edit, corrupting it (observed
+    /// "3A5F8F" typed into a seeded "C7C7C7" draft becoming "C7C7C73A5F8F", which then fails to
+    /// parse and silently blocks the commit). Cleared on first real divergence so a later drag back
+    /// to the original seed color still commits.
+    @State private var pickerSeedHex: String?
+    @State private var pendingPickerCommit: Task<Void, Never>?
 
     var body: some View {
         Button {
             guard let board else { return }
             hexDraft = board.customThemeHex ?? ""
             showsHexError = false
+            let resolvedColor: Color
+            switch ThemeResolution.resolve(themeName: board.themeName, customHex: board.customThemeHex) {
+            case .custom(let color):
+                resolvedColor = color
+            case .preset(let theme):
+                resolvedColor = theme.swatchColor
+            }
+            pickerColor = resolvedColor
+            pickerSeedHex = ColorHexBridge.hexString(from: resolvedColor)
             isPresented = true
         } label: {
             Label("Theme", systemImage: "paintpalette")
@@ -116,6 +137,28 @@ struct ThemeButton: View {
             Text("Custom")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            ColorPicker("Custom color", selection: $pickerColor, supportsOpacity: false)
+                .accessibilityIdentifier(AccessibilityID.themeColorWell)
+                .onChange(of: pickerColor) { _, newColor in
+                    guard let hex = ColorHexBridge.hexString(from: newColor) else { return }
+                    if let seedHex = pickerSeedHex, hex == seedHex {
+                        // The seed echo described above — not a user pick. Swallow it.
+                        return
+                    }
+                    pickerSeedHex = nil
+                    guard hex != board.customThemeHex else { return }
+                    hexDraft = hex
+                    showsHexError = false
+                    // NSColorPanel has no "done" event and its wheel fires continuously;
+                    // debounce so a drag settles into ONE setTheme = one undo step.
+                    pendingPickerCommit?.cancel()
+                    pendingPickerCommit = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(400))
+                        guard !Task.isCancelled else { return }
+                        store.setTheme(board, themeName: board.themeName, customHex: hex)
+                    }
+                }
 
             TextField("#RRGGBB", text: $hexDraft)
                 .textFieldStyle(.roundedBorder)
