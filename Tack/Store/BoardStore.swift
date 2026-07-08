@@ -50,11 +50,11 @@ final class BoardStore {
     // MARK: - Boards
 
     @discardableResult
-    func createBoard(name: String, emoji: String?) -> Board {
+    func createBoard(name: String, emoji: String?, about: String? = nil) -> Board {
         var createdBoard: Board!
         withUndoGroup("Create Board") {
             let nextPosition = (fetchBoards().map(\.position).max() ?? -1) + 1
-            let board = Board(name: name, emoji: emoji, position: nextPosition)
+            let board = Board(name: name, emoji: emoji, about: about, position: nextPosition)
             context.insert(board)
             for (index, listName) in ["To Do", "In Progress", "Done"].enumerated() {
                 let list = BoardList(name: listName, position: index, board: board)
@@ -69,6 +69,18 @@ final class BoardStore {
     func renameBoard(_ board: Board, to name: String) {
         withUndoGroup("Rename Board") {
             board.name = name
+            save()
+        }
+    }
+
+    /// Commits the Edit Board sheet in one undo step ("Edit Board"), diffing each field —
+    /// a whole-call no-op opens no undo group and does not save (mirrors applyCardEdits).
+    func editBoard(_ board: Board, name: String, emoji: String?, about: String?) {
+        guard board.name != name || board.emoji != emoji || board.about != about else { return }
+        withUndoGroup("Edit Board") {
+            if board.name != name { board.name = name }
+            if board.emoji != emoji { board.emoji = emoji }
+            if board.about != about { board.about = about }
             save()
         }
     }

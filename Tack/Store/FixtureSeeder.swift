@@ -41,7 +41,7 @@ enum FixtureSeeder {
 
     @MainActor
     private static func seedGroceries(store: BoardStore) {
-        let board = store.createBoard(name: "Groceries", emoji: "🛒")
+        let board = store.createBoard(name: "Groceries", emoji: "🛒", about: "Weekly shopping run")
         let lists = board.sortedLists
         guard lists.count == 3 else { return } // ["To Do", "In Progress", "Done"]
         let toDo = lists[0]

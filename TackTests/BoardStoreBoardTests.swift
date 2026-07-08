@@ -122,4 +122,56 @@ struct BoardStoreBoardTests {
         #expect(remaining.map(\.name) == ["C", "A"])
         #expect(remaining.map(\.position) == [0, 1])
     }
+
+    @Test("createBoard stores an optional about note")
+    func createBoardStoresAbout() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "A", emoji: nil, about: "Weekly list")
+        #expect(board.about == "Weekly list")
+        let plain = env.store.createBoard(name: "B", emoji: nil)
+        #expect(plain.about == nil)
+    }
+
+    @Test("editBoard updates name, emoji, and about together")
+    func editBoardUpdatesAllFields() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "Old", emoji: "🛒", about: nil)
+        env.store.editBoard(board, name: "New", emoji: "💼", about: "Notes")
+        #expect(board.name == "New")
+        #expect(board.emoji == "💼")
+        #expect(board.about == "Notes")
+    }
+
+    @Test("editBoard clears emoji and about when passed nil")
+    func editBoardClearsEmojiAndAbout() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "A", emoji: "🛒", about: "x")
+        env.store.editBoard(board, name: "A", emoji: nil, about: nil)
+        #expect(board.emoji == nil)
+        #expect(board.about == nil)
+    }
+
+    @Test("editBoard is exactly one undo step covering all fields")
+    func editBoardIsOneUndoStep() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "Old", emoji: "🛒", about: nil)
+        env.store.editBoard(board, name: "New", emoji: "💼", about: "Notes")
+        env.undoManager?.undo()
+        #expect(board.name == "Old")
+        #expect(board.emoji == "🛒")
+        #expect(board.about == nil)
+        env.undoManager?.redo()
+        #expect(board.name == "New")
+        #expect(board.emoji == "💼")
+        #expect(board.about == "Notes")
+    }
+
+    @Test("editBoard no-op registers no undo step")
+    func editBoardNoOpRegistersNoUndo() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "A", emoji: "🛒", about: "x")
+        env.undoManager?.removeAllActions()
+        env.store.editBoard(board, name: "A", emoji: "🛒", about: "x")
+        #expect(env.undoManager?.canUndo == false)
+    }
 }

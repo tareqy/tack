@@ -6,6 +6,9 @@ final class Board {
     @Attribute(.unique) var id: UUID
     var name: String
     var emoji: String?
+    /// Optional free-text purpose note ("what this board is for"). Named `about`,
+    /// NOT `description` — that collides with NSObject on @Model classes (Card.details precedent).
+    var about: String?
     var position: Int          // sidebar order; user-reorderable via drag (B-06)
     var themeName: String      // "default" until Phase B
     var customThemeHex: String?
@@ -18,6 +21,7 @@ final class Board {
         id: UUID = UUID(),
         name: String,
         emoji: String? = nil,
+        about: String? = nil,
         position: Int,
         themeName: String = "default",
         customThemeHex: String? = nil,
@@ -27,6 +31,7 @@ final class Board {
         self.id = id
         self.name = name
         self.emoji = emoji
+        self.about = about
         self.position = position
         self.themeName = themeName
         self.customThemeHex = customThemeHex
