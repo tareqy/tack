@@ -25,14 +25,14 @@ struct ThemeButton: View {
     @State private var hexDraft = ""
     @State private var showsHexError = false
     @State private var pickerColor: Color = .white
-    /// The hex `pickerColor` was just seeded to, or nil once a genuine user pick has been seen this
-    /// popover session. NSColorWell re-publishes its seeded value through `onChange` a moment after
-    /// attaching (an AppKit-bridging echo, not a user pick — confirmed via NSLog: it fires ~seconds
-    /// after seeding, sometimes mid-keystroke in the hex field) — without this guard that echo
-    /// stomps `hexDraft` out from under a concurrent hex-field edit, corrupting it (observed
-    /// "3A5F8F" typed into a seeded "C7C7C7" draft becoming "C7C7C73A5F8F", which then fails to
-    /// parse and silently blocks the commit). Cleared on first real divergence so a later drag back
-    /// to the original seed color still commits.
+    /// The hex `pickerColor` was seeded to on popover open. Sticky for the popover session: ANY
+    /// well event matching the seeded value is swallowed — the NSColorWell echoes its seed ~2s
+    /// after attach (an AppKit-bridging round-trip, not a pick; confirmed via NSLog, where it
+    /// stomped `hexDraft` mid-keystroke, corrupting "3A5F8F" typed into a seeded "C7C7C7" draft
+    /// into "C7C7C73A5F8F"), and the echo can arrive AFTER a real pick, so a one-shot or
+    /// clear-on-divergence guard lets it masquerade as a pick and silently revert the user's
+    /// choice ~400ms later. Cost: re-picking exactly the original color in one session is a no-op
+    /// (visually identical anyway); reopening the popover reseeds.
     @State private var pickerSeedHex: String?
     @State private var pendingPickerCommit: Task<Void, Never>?
 
@@ -143,15 +143,18 @@ struct ThemeButton: View {
                 .onChange(of: pickerColor) { _, newColor in
                     guard let hex = ColorHexBridge.hexString(from: newColor) else { return }
                     if let seedHex = pickerSeedHex, hex == seedHex {
-                        // The seed echo described above — not a user pick. Swallow it.
+                        // The seed echo described above — not a user pick. Swallow it
+                        // (sticky for the whole session: the echo can land after a real pick).
                         return
                     }
-                    pickerSeedHex = nil
                     guard hex != board.customThemeHex else { return }
                     hexDraft = hex
                     showsHexError = false
                     // NSColorPanel has no "done" event and its wheel fires continuously;
                     // debounce so a drag settles into ONE setTheme = one undo step.
+                    // Deliberately NOT cancelled when the popover closes — clicking the well
+                    // closes the transient popover as the normal flow, so the settled pick
+                    // must still commit.
                     pendingPickerCommit?.cancel()
                     pendingPickerCommit = Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(400))
