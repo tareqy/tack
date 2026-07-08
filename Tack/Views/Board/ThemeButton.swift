@@ -32,7 +32,8 @@ struct ThemeButton: View {
     /// into "C7C7C73A5F8F"), and the echo can arrive AFTER a real pick, so a one-shot or
     /// clear-on-divergence guard lets it masquerade as a pick and silently revert the user's
     /// choice ~400ms later. Cost: re-picking exactly the original color in one session is a no-op
-    /// (visually identical anyway); reopening the popover reseeds.
+    /// (for a preset-seeded session that means the board stays preset-themed rather than pinning
+    /// the equivalent custom hex — visually identical, semantically preset); reopening reseeds.
     @State private var pickerSeedHex: String?
     @State private var pendingPickerCommit: Task<Void, Never>?
 

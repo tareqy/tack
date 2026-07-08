@@ -6,7 +6,7 @@ import SwiftUI
 /// it); "Cancel"/Esc simply dismiss, discarding the local `@State` untouched.
 ///
 /// Presented via `.sheet(item:)` from `BoardView` (bound to its `selectedDetailCard: Card?`), the
-/// same pattern `SidebarView` already uses for `RenameBoardSheet`/`renamingBoard`.
+/// same pattern `SidebarView` already uses for `EditBoardSheet`/`editingBoard`.
 struct CardDetailView: View {
     let card: Card
     let store: BoardStore

@@ -225,7 +225,8 @@ enum ImportError: Error, Equatable, LocalizedError {
     /// fileImporter completion and the launch hook), malformed JSON, a missing required field, or
     /// an undecodable date (Foundation's `.iso8601` rejects fractional seconds).
     case unreadable(detail: String)
-    /// `formatVersion != ExportDocument.formatVersion`.
+    /// `formatVersion` outside `1...ExportDocument.formatVersion` (older versions import
+    /// tolerantly; only unknown NEWER versions reject).
     case unsupportedVersion(Int)
     /// Replace-all requested with a zero-board envelope. The mode dialog omits the Replace button
     /// for empty backups; this is the store-level backstop (and what the test hook publishes if a
