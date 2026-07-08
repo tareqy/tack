@@ -260,8 +260,8 @@ struct RootView: View {
     /// the user-selected entitlement grant, so gating the READ on it would break legitimate
     /// imports. The decoded envelope is parked in `pendingImport` on the NEXT main-queue tick:
     /// flipping a confirmationDialog on in the same tick the fileImporter dismisses can silently
-    /// fail to present (verify the hop is needed by hand during implementation; record the result
-    /// in the spec).
+    /// fail to present (with the hop, the dialog presented promptly in the 2026-07-08 manual gate —
+    /// see the spec's Manual-gate outcome; the error alert below hops for the same reason).
     private func handlePickedImportFile(_ result: Result<URL, Error>) {
         // A genuine panel `.failure` (rare — e.g. a permissions error surfaced by the panel
         // itself) is deliberately silent here alongside a plain cancel; if that's ever revisited,
