@@ -22,6 +22,11 @@ final class CardDetailUITests: TackUITestCase {
         XCTAssertEqual(titleField.value as? String, "Call plumber",
                        "title field should be pre-filled with the card's title")
 
+        XCTAssertTrue(detailSheet.staticTexts["Brief"].exists,
+                      "description section should be titled Brief")
+        XCTAssertFalse(detailSheet.staticTexts["Description"].exists,
+                       "the old Description section title must be gone")
+
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists }, "Esc should close the sheet")
     }

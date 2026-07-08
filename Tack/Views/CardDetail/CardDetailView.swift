@@ -45,7 +45,7 @@ struct CardDetailView: View {
                         .accessibilityIdentifier(AccessibilityID.cardDetailTitleField)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Description")
+                        Text("Brief")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         // Native editable-text-area dressing (an NSTextView look: text background
