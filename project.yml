@@ -17,6 +17,13 @@ targets:
     type: application
     platform: macOS
     sources: [Tack]
+    settings:
+      base:
+        # Single source of truth for the app version: with GENERATE_INFOPLIST_FILE=YES, Xcode
+        # derives CFBundleShortVersionString/CFBundleVersion from these settings and STRIPS any
+        # literal plist values (verified: without these, built apps carried no version keys at all).
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
     entitlements:
       path: Tack/Tack.entitlements
       properties:
@@ -26,8 +33,6 @@ targets:
       path: Tack/Info.plist
       properties:
         CFBundleDisplayName: Tack
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
         LSMinimumSystemVersion: "14.0"
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
