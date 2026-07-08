@@ -37,11 +37,21 @@ struct RootView: View {
     @State private var pendingImport: PendingImport?
     @State private var importError: ImportError?
 
+    /// E-02 import e2e (test-only): `--import-from` filename, `--import-mode` override, the
+    /// published outcome marker, and a one-shot guard (marker-independent: ask-mode publishes
+    /// nothing until a dialog button is clicked, so the marker can't be the guard).
+    private let importFromFilename: String?
+    private let importModeOverride: String?
+    @State private var importSelfCheck: String?
+    @State private var importHookHasRun = false
+
     init(config: AppLaunchConfig) {
         _selectedBoardIDRaw = AppStorage(config.selectedBoardDefaultsKey)
         // Test-only affordance — honored ONLY under --uitest (mirrors how --appearance is gated
         // in TackApp.init), so a normal launch can never be made to write an export file.
         exportToFilename = config.isUITest ? config.exportTo : nil
+        importFromFilename = config.isUITest ? config.importFrom : nil
+        importModeOverride = config.isUITest ? config.importMode : nil
     }
 
     var body: some View {
@@ -67,6 +77,16 @@ struct RootView: View {
                     .accessibilityRepresentation {
                         Text(exportSelfCheck)
                             .accessibilityIdentifier(AccessibilityID.exportSelfCheck)
+                    }
+            }
+
+            // E-02 import e2e marker (present only under --import-from): see AccessibilityID.
+            if let importSelfCheck {
+                Color.clear
+                    .allowsHitTesting(false)
+                    .accessibilityRepresentation {
+                        Text(importSelfCheck)
+                            .accessibilityIdentifier(AccessibilityID.importSelfCheck)
                     }
             }
 
@@ -109,6 +129,7 @@ struct RootView: View {
         .onAppear(perform: runExportSelfCheckIfNeeded)
         // Re-run once boards are first available (the @Query may populate after the initial appear).
         .onChange(of: boards.count) { _, _ in runExportSelfCheckIfNeeded() }
+        .onAppear(perform: runImportSelfCheckIfNeeded)
         .onChange(of: undoManagerID) { _, _ in wireUndoManager() }
         .onChange(of: selectedBoardID) { _, newValue in
             selectedBoardIDRaw = newValue?.uuidString
@@ -281,8 +302,8 @@ struct RootView: View {
             + "“Replace All Boards” deletes your current board(s) first — replacing cannot be undone."
     }
 
-    /// Shared completion for the dialog buttons AND the --import-from test hook (Task 6), so both
-    /// paths get identical store routing and post-import selection.
+    /// Shared completion for the dialog buttons AND the --import-from test hook, so both paths
+    /// get identical store routing, post-import selection, and (test-only) marker publication.
     private func completeImport(_ pending: PendingImport, replacing: Bool) {
         pendingImport = nil
         do {
@@ -292,15 +313,75 @@ struct RootView: View {
             if let first = imported.first {
                 selectedBoardID = first.id
             }
+            publishImportMarker(importSuccessSummary())
         } catch let error as ImportError {
             importError = error
+            publishImportMarker("error|\(error.caseName)")
         } catch {
             importError = .saveFailed(detail: error.localizedDescription)
+            publishImportMarker("error|saveFailed")
         }
     }
 
     private func cancelImport() {
         pendingImport = nil
+        publishImportMarker("cancelled")
+    }
+
+    /// E-02 import e2e self-check (test-only, `--import-from <file>` + `--import-mode
+    /// add|replace|ask`). Reads the JSON from the sandbox UITest/ dir, decodes through the
+    /// production path, then routes through the SAME completion the dialog buttons use
+    /// (`completeImport` — identical store routing and post-import selection): `add`/`replace`
+    /// import directly; `ask` parks the envelope in `pendingImport` so the REAL mode dialog
+    /// presents and the test drives its buttons. Deliberately `.onAppear`-only — export's extra
+    /// `.onChange(of: boards.count)` re-trigger exists because export reads the `@Query`; import
+    /// reads the file and store directly.
+    private func runImportSelfCheckIfNeeded() {
+        guard let filename = importFromFilename, !importHookHasRun else { return }
+        importHookHasRun = true
+        do {
+            let directory = try ModelContainerFactory.uiTestDirectory()
+            let url = directory.appendingPathComponent(filename)
+            let data: Data
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                throw ImportError.unreadable(detail: error.localizedDescription)
+            }
+            let envelope = try ExportDocument.decodeForImport(data)
+            let pending = PendingImport(envelope: envelope, filename: filename)
+            switch importModeOverride {
+            case "ask":
+                DispatchQueue.main.async { pendingImport = pending }
+            case "replace":
+                completeImport(pending, replacing: true)
+            default:   // nil or "add"
+                completeImport(pending, replacing: false)
+            }
+        } catch let error as ImportError {
+            importError = error
+            publishImportMarker("error|\(error.caseName)")
+        } catch {
+            importError = .unreadable(detail: error.localizedDescription)
+            publishImportMarker("error|unreadable")
+        }
+    }
+
+    /// No-op for every normal launch (nil hook filename) — production imports never publish.
+    private func publishImportMarker(_ value: String) {
+        guard importFromFilename != nil else { return }
+        importSelfCheck = value
+    }
+
+    /// "ok|<names>|<titles>" computed from LIVE post-import store state via a direct fetch (the
+    /// @Query can lag a tick behind the store call; reading the context is fine — the
+    /// views-never-WRITE invariant is untouched).
+    private func importSuccessSummary() -> String {
+        let descriptor = FetchDescriptor<Board>(sortBy: [SortDescriptor(\.position)])
+        let all = (try? modelContext.fetch(descriptor)) ?? []
+        let names = all.map(\.name).joined(separator: ",")
+        let titles = all.first?.sortedLists.first?.sortedCards.map(\.title).joined(separator: ",") ?? ""
+        return "ok|\(names)|\(titles)"
     }
 
     // MARK: - Undo wiring

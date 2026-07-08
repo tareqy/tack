@@ -9,6 +9,14 @@ enum AccessibilityID {
     /// assert (see `RootView.runExportSelfCheckIfNeeded`).
     static let exportSelfCheck = "export-self-check"
 
+    /// E-02 import e2e marker (test-only, present only under `--import-from`). Same detached
+    /// `.accessibilityRepresentation` pattern as `exportSelfCheck`. Value grammar (STABLE tokens,
+    /// never localized copy): "ok|<all post-import board names in position order>|<first board's
+    /// first-list card titles>" — computed from LIVE post-import store state, the only oracle that
+    /// distinguishes add from replace when names duplicate; "error|<ImportError.caseName>" on any
+    /// failure; "cancelled" when the ask-mode dialog is dismissed.
+    static let importSelfCheck = "import-self-check"
+
     static func board(_ name: String) -> String { "board-\(name)" }
     static func list(_ name: String) -> String { "list-\(name)" }
     static func card(_ title: String) -> String { "card-\(title)" }

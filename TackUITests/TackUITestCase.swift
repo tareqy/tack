@@ -27,7 +27,9 @@ class TackUITestCase: XCTestCase {
     /// `AppLaunchConfig`/`TackApp` reads to force `NSApp.appearance` — omitted (nil, the default)
     /// for every pre-M10 call site, which is unaffected.
     @discardableResult
-    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil, appearance: String? = nil, exportTo: String? = nil) -> XCUIApplication {
+    func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil,
+                appearance: String? = nil, exportTo: String? = nil,
+                importFrom: String? = nil, importMode: String? = nil) -> XCUIApplication {
         let resolvedStore = storeName ?? Self.sanitized(name)
         currentFixture = fixture
         currentStoreName = resolvedStore
@@ -42,6 +44,18 @@ class TackUITestCase: XCTestCase {
         // boards into the sandbox `UITest/` dir on launch (see AppLaunchConfig.exportTo).
         if let exportTo {
             args.append(contentsOf: ["--export-to", exportTo])
+        }
+        // E-02 import e2e: `--import-from <file>` (+ optional `--import-mode add|replace|ask`)
+        // makes the app read that JSON from the sandbox UITest/ dir and import it on launch.
+        // relaunchPreservingStore deliberately re-passes NEITHER flag: a preserved-store relaunch
+        // must never double-import (and FixtureSeeder skips non-empty stores) — this
+        // non-forwarding is what makes the persistence leg of the round-trip test valid. Do not
+        // "fix" it to forward all args.
+        if let importFrom {
+            args.append(contentsOf: ["--import-from", importFrom])
+        }
+        if let importMode {
+            args.append(contentsOf: ["--import-mode", importMode])
         }
         launched.launchArguments = args
         launched.launch()

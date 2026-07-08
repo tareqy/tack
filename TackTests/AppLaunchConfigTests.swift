@@ -34,4 +34,20 @@ struct AppLaunchConfigTests {
         #expect(config.storeName == "s1")
         #expect(config.reset == true)
     }
+
+    // MARK: - E-02: --import-from / --import-mode
+
+    @Test("importFrom reads the value following --import-from; nil when absent or trailing")
+    func importFromParsing() {
+        #expect(AppLaunchConfig(arguments: ["--uitest", "--import-from", "backup.json"]).importFrom == "backup.json")
+        #expect(AppLaunchConfig(arguments: ["--uitest"]).importFrom == nil)
+        #expect(AppLaunchConfig(arguments: ["--uitest", "--import-from"]).importFrom == nil)
+    }
+
+    @Test("importMode reads the value following --import-mode; nil when absent or trailing")
+    func importModeParsing() {
+        #expect(AppLaunchConfig(arguments: ["--uitest", "--import-mode", "replace"]).importMode == "replace")
+        #expect(AppLaunchConfig(arguments: ["--uitest"]).importMode == nil)
+        #expect(AppLaunchConfig(arguments: ["--uitest", "--import-mode"]).importMode == nil)
+    }
 }

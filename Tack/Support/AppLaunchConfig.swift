@@ -24,6 +24,18 @@ struct AppLaunchConfig {
     /// this and decodes the resulting file. `nil` for every normal launch and every non-export test.
     let exportTo: String?
 
+    /// E-02 import e2e hook, test-only (mirrors `exportTo`): `--import-from <filename>` makes a
+    /// `--uitest` launch read `UITest/<filename>` from the sandbox container and run it through
+    /// the production decode + store path, publishing the outcome via the `import-self-check`
+    /// marker. Exists because the production import runs through a sandboxed, remote-hosted
+    /// NSOpenPanel that XCUITest cannot drive, and the sandboxed runner cannot place files in the
+    /// app container (the canonical e2e has the app export its own input first via `--export-to`).
+    let importFrom: String?
+    /// E-02, test-only: `--import-mode add|replace|ask` (default add). `add`/`replace` import
+    /// directly (deterministic content tests); `ask` presents the REAL mode dialog so a test can
+    /// drive its buttons — the only automatable path onto the dialog.
+    let importMode: String?
+
     /// Configuration for the running process.
     static let current = AppLaunchConfig()
 
@@ -34,6 +46,8 @@ struct AppLaunchConfig {
         storeName = AppLaunchConfig.value(after: "--store-name", in: arguments) ?? "default"
         appearance = AppLaunchConfig.value(after: "--appearance", in: arguments)
         exportTo = AppLaunchConfig.value(after: "--export-to", in: arguments)
+        importFrom = AppLaunchConfig.value(after: "--import-from", in: arguments)
+        importMode = AppLaunchConfig.value(after: "--import-mode", in: arguments)
     }
 
     /// Returns the argument immediately following `flag`, or nil if absent / trailing.
