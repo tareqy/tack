@@ -43,6 +43,10 @@ struct ImportUndoOnDiskTests {
             store = BoardStore(context: context)
         }
 
+        /// Best-effort: SwiftData's ModelContainer has no public close API and `env` outlives this
+        /// deferred call, so the sqlite file is unlinked while the store is still open — macOS
+        /// logs a harmless "vnode unlinked while in use" to stderr. Accepted: assertions have all
+        /// run by then, and the temp dir is gone either way.
         func tearDown() {
             try? FileManager.default.removeItem(at: directory)
         }
