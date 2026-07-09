@@ -130,39 +130,43 @@ struct AreaUndoOnDiskTests {
         #expect(gamma.position == 2, "global position never moves with area membership")
     }
 
-    // MARK: - Leg A: deleteArea — the N-board .nullify release (LAST: likeliest to crash)
+    // MARK: - Leg A: deleteArea — the N-board .nullify release (RED; ships non-undoable)
 
-    @Test("leg A: deleteArea releases members — undo restores row AND membership; redo re-releases")
-    func deleteAreaUndoRedoIntegrity() throws {
+    /// M-F on-disk smoke — the reduced form (the `ChecklistUndoOnDiskTests` final shape). THE
+    /// SPIKE GATE RESOLVED (RED) ON-DISK during Task 0: `deleteAreaUndoRedoIntegrity`, run 3/3
+    /// times against a real sqlite store, failed identically every run with no crash — `undo()`
+    /// restored the Area ROW but silently dropped the `.nullify` inverse's MEMBERSHIP
+    /// (`restored.sortedBoards` came back `[]` instead of `[alphaPID, betaPID]`). `deleteArea`
+    /// therefore ships NON-undoable via `deleteBoard`'s detach pattern (see the M-F plan's
+    /// ledger, `docs/superpowers/plans/2026-07-09-areas.md`, and `BoardStore.deleteArea`'s doc
+    /// comment for the verbatim failure). This suite still pins, on a REAL sqlite store: the
+    /// nullify release completes fully (no board ever deleted, positions stay contiguous), the
+    /// detach discipline completes clean (manager reattached, stack cleared, no assert/hang), and
+    /// the delete persists — the `ChecklistUndoOnDiskTests`/`ImportUndoOnDiskTests` posture.
+    @Test("on-disk deleteArea: nullify release, detach discipline clean")
+    func onDiskDeleteAreaSmoke() throws {
         let env = try OnDiskTestStore(directoryPrefix: "TackAreaSpike")
         defer { env.tearDown() }
         let (home, alpha, beta, gamma) = try seed(env)
-        let homePID = home.persistentModelID
-        let alphaPID = alpha.persistentModelID
-        let betaPID = beta.persistentModelID
+        _ = env.store.createBoard(name: "Delta", emoji: nil) // a pre-delete group that must be CLEARED
+        // Hold a real undoable group on the stack to prove the delete clears it.
+        #expect(env.undoManager.canUndo == true)
 
         env.store.deleteArea(home)
+
         #expect(try env.context.fetchCount(FetchDescriptor<Area>()) == 0)
-        #expect(try env.context.fetchCount(FetchDescriptor<Board>()) == 3, "nullify NEVER deletes boards")
+        let allBoards = try env.context.fetch(FetchDescriptor<Board>()).sorted { $0.position < $1.position }
+        #expect(allBoards.count == 4, "nullify NEVER deletes boards")
         #expect(alpha.area == nil && beta.area == nil, "members released to ungrouped")
-        #expect([alpha, beta, gamma].map(\.position) == [0, 1, 2], "global positions untouched")
-
-        env.undoManager.undo()
-        #expect(try env.context.fetchCount(FetchDescriptor<Area>()) == 1)
-        let restored = try #require(env.store.fetchAreasForTesting().first)
-        #expect(restored.persistentModelID == homePID, "undo must restore the row, not a lookalike")
-        #expect(restored.sortedBoards.map(\.persistentModelID) == [alphaPID, betaPID],
-                "MEMBERSHIP is the silent-loss oracle — an empty restored area is a RED verdict")
+        #expect(allBoards.map(\.position) == [0, 1, 2, 3], "positions stay contiguous")
         #expect(gamma.area == nil, "the control board stays ungrouped")
-
-        env.undoManager.redo()
-        #expect(try env.context.fetchCount(FetchDescriptor<Area>()) == 0)
-        #expect(alpha.area == nil && beta.area == nil)
-        #expect(try env.context.fetchCount(FetchDescriptor<Board>()) == 3)
-
-        env.undoManager.undo()
-        let restoredAgain = try #require(env.store.fetchAreasForTesting().first)
-        #expect(restoredAgain.persistentModelID == homePID)
-        #expect(restoredAgain.sortedBoards.map(\.persistentModelID) == [alphaPID, betaPID])
+        // Detach discipline completed: manager reattached, stack clear, no assert/hang.
+        #expect(env.context.undoManager === env.undoManager)
+        #expect(env.undoManager.canUndo == false)
+        #expect(env.undoManager.canRedo == false)
+        // Persisted: a second context on the same container sees the post-delete truth.
+        let fresh = ModelContext(env.container)
+        #expect(try fresh.fetchCount(FetchDescriptor<Area>()) == 0)
+        #expect(try fresh.fetchCount(FetchDescriptor<Board>()) == 4)
     }
 }

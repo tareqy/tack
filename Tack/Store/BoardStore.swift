@@ -237,27 +237,63 @@ final class BoardStore {
     /// header, the total order of boards is unchanged, so ⌘1–⌘9 / SelectionRestore /
     /// NextBoardSelection never notice. One undo step; a same-area call is a whole-call no-op
     /// (opens no group, does not save).
-    /// TRIAL FORM (M-F Task 0 spike, leg B): a relationship reassignment across up to TWO
-    /// Area.boards inverse collections — the moveCard cross-list hazard shape one level up.
     func setArea(_ board: Board, to area: Area?) {
         guard board.area?.id != area?.id else { return }
-        withUndoGroup(area == nil ? "Remove from Area" : "Move to Area") {
+        // M-F spike leg B RED (AreaUndoOnDiskTests, ledger in
+        // docs/superpowers/plans/2026-07-09-areas.md): SwiftData's automatic registration cannot
+        // undo/redo this two-inverse-collection reassignment — setAreaBetweenAreasUndoRedoIntegrity
+        // (area→area) passed 3/3, but setAreaIntoAreaFromUngroupedUndoRedo (nil→area, area→nil)
+        // failed 0/3, no crash: undoing gamma's nil→home move wiped Home's ENTIRE sortedBoards
+        // (alpha AND beta, neither of which the operation touched) instead of just releasing
+        // gamma (AreaUndoOnDiskTests.swift:119:9, :121:9) — the same silent membership loss as
+        // leg A, one relationship-collection lighter. Per protocol a leg is GREEN only when ALL
+        // its tests pass 3/3, so leg B is judged RED as a whole. This is the exact moveCard
+        // cross-list finding one level up, so this is moveCard's mitigation verbatim: automatic
+        // registration disabled for the span of the mutation, an explicit total inverse pair
+        // registered instead (registerUndoable re-registers with roles swapped, which is what
+        // makes redo and every later cycle work).
+        let previous = board.area
+        context.undoManager?.disableUndoRegistration()
+        board.area = area
+        save()
+        context.undoManager?.enableUndoRegistration()
+
+        registerUndoable(name: area == nil ? "Remove from Area" : "Move to Area", undo: { [weak self] in
+            guard let self else { return }
+            self.context.undoManager?.disableUndoRegistration()
+            board.area = previous
+            self.save()
+            self.context.undoManager?.enableUndoRegistration()
+        }, redo: { [weak self] in
+            guard let self else { return }
+            self.context.undoManager?.disableUndoRegistration()
             board.area = area
-            save()
-        }
+            self.save()
+            self.context.undoManager?.enableUndoRegistration()
+        })
     }
 
-    /// M-F: deletes the area; the `.nullify` rule releases its boards to ungrouped — boards are
-    /// NEVER deleted and their global positions are untouched, so area delete's blast radius is
-    /// strictly smaller than a single board delete.
-    /// TRIAL FORM (M-F Task 0 spike, leg A): an N-board relationship release under undo
-    /// snapshotting. Task 1a keeps this withUndoGroup form (verdict GREEN) or Task 1b rewrites
-    /// it to deleteBoard's detach-and-clear (verdict RED — the pre-agreed fallback).
+    /// M-F: deletes the area; `.nullify` releases its boards to ungrouped — boards are NEVER
+    /// deleted and their global positions are untouched. NOT undoable — the M-F spike
+    /// (AreaUndoOnDiskTests leg A, ledger in `docs/superpowers/plans/2026-07-09-areas.md`) showed
+    /// SwiftData's undo of the N-board release violating integrity on-disk, 0/3 runs passing, no
+    /// crash: `undo()` correctly restored the Area ROW (`fetchCount == 1`,
+    /// `persistentModelID == homePID`) but silently dropped the `.nullify` inverse's MEMBERSHIP —
+    /// `restored.sortedBoards` came back `[]` instead of `[alphaPID, betaPID]`
+    /// (`AreaUndoOnDiskTests.swift:154:9`, and again after a redo→undo cycle at `:166:9`) — the
+    /// exact silent-drop shape one level up from the import spike's dropped third-level inserts.
+    /// Mitigation is deleteBoard's shape-independent detach-and-clear: manager detached for the
+    /// span, stack cleared in the defer (earlier groups reference the deleted row). The FOURTH
+    /// delete under this discipline — don't "fix" it by restoring withUndoGroup.
     func deleteArea(_ area: Area) {
-        withUndoGroup("Delete Area") {
-            context.delete(area)
-            save()
+        let held = context.undoManager
+        context.undoManager = nil
+        defer {
+            context.undoManager = held
+            held?.removeAllActions()
         }
+        context.delete(area)
+        save()
     }
 
     /// M-F: renames an area in one undo step, trimming to the merge key. A no-change rename
