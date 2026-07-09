@@ -159,4 +159,22 @@ struct FixtureSeederTests {
         let labels = (try? env.context.fetch(FetchDescriptor<CardLabel>())) ?? []
         #expect(labels.count == 8)
     }
+
+    @Test("M-E: Return library books carries the fixture checklist — 3 items, 2 done, positions 0..<3; no other card has items")
+    func checklistOnReturnLibraryBooks() {
+        let env = TestContainer()
+        FixtureSeeder.seed("standard", context: env.context)
+
+        let groceries = fetchBoards(env.context)[0]
+        let returnBooks = card("Return library books", in: groceries.sortedLists[0])
+        let items = returnBooks?.sortedChecklistItems ?? []
+        #expect(items.map(\.text) == ["Renew library card", "Gather books from car", "Pay late fee"])
+        #expect(items.map(\.isDone) == [true, true, false], "face fraction reads 2/3")
+        #expect(items.map(\.position) == [0, 1, 2])
+
+        let allCards = groceries.sortedLists.flatMap(\.sortedCards)
+        for c in allCards where c.title != "Return library books" {
+            #expect(c.checklistItems.isEmpty, "\(c.title) must stay checklist-free — the roster is load-bearing")
+        }
+    }
 }

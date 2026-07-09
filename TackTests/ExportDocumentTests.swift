@@ -22,16 +22,16 @@ struct ExportDocumentTests {
         try body(boards)
     }
 
-    @Test("formatVersion is 3 and present in the encoded JSON")
-    func formatVersionIsThree() throws {
+    @Test("formatVersion is 4 and present in the encoded JSON")
+    func formatVersionIsFour() throws {
         try withStandardBoards { boards in
             let envelope = ExportDocument.makeEnvelope(boards: boards)
-            #expect(envelope.formatVersion == 3)
+            #expect(envelope.formatVersion == 4)
 
             let json = String(data: try ExportDocument.encode(envelope), encoding: .utf8)!
             #expect(json.contains("\"formatVersion\""))
-            // The value round-trips as 3 regardless of pretty-print spacing.
-            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 3)
+            // The value round-trips as 4 regardless of pretty-print spacing.
+            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 4)
         }
     }
 
@@ -68,6 +68,16 @@ struct ExportDocumentTests {
             let writeReport = groceries.lists[1].cards[0]
             #expect(writeReport.includesTime == true)
             #expect(writeReport.durationMinutes == 60)
+
+            // M-E: the fixture's checklist card round-trips items in order with their flags;
+            // checklist-less cards export an EMPTY array (never a missing key) so encoding
+            // stays deterministic — the byte-equality re-encode below covers both shapes.
+            #expect(toDo.cards[2].checklist == [
+                ExportChecklistItem(text: "Renew library card", isDone: true),
+                ExportChecklistItem(text: "Gather books from car", isDone: true),
+                ExportChecklistItem(text: "Pay late fee", isDone: false),
+            ])
+            #expect(toDo.cards[1].checklist == [], "Call plumber: empty array, not nil, in a fresh export")
 
             // Work board: 3 empty default lists.
             let work = decoded.boards[1]
@@ -130,6 +140,6 @@ struct ExportDocumentTests {
 
         let decoded = try ExportDocument.decode(try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)))
         #expect(decoded.boards.isEmpty)
-        #expect(decoded.formatVersion == 3)
+        #expect(decoded.formatVersion == 4)
     }
 }

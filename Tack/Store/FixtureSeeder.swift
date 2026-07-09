@@ -64,6 +64,20 @@ enum FixtureSeeder {
 
         let returnBooks = store.addCard(to: toDo, title: "Return library books")
         store.setDueDate(daysFromNow(1), on: returnBooks)
+        // M-E: the fixture's ONE checklist-bearing card — 3 items, 2 done, face fraction "2/3".
+        // Deliberately Return library books: the least-detail-coupled dated card (no UI test ever
+        // opens its detail sheet; its face-level uses are id/badge-value-based, which the fraction
+        // chip on the EXISTING meta line can't disturb). Seeded through applyCardEdits so drafts →
+        // rows exercise the exact production diff path. Do not move these items to another card —
+        // Call plumber / Write report / Book flights all anchor CardDetailUITests flows.
+        store.applyCardEdits(returnBooks, title: returnBooks.title, details: returnBooks.details,
+                             labels: [], dueDate: returnBooks.dueDate, includesTime: false,
+                             durationMinutes: nil,
+                             checklist: [
+                                 ChecklistDraft(id: nil, text: "Renew library card", isDone: true),
+                                 ChecklistDraft(id: nil, text: "Gather books from car", isDone: true),
+                                 ChecklistDraft(id: nil, text: "Pay late fee", isDone: false),
+                             ])
 
         let writeReport = store.addCard(to: inProgress, title: "Write report")
         // M-B: the fixture's ONE timed card — a 2:00 PM slot, 60 minutes, five days out. Still

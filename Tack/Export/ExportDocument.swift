@@ -52,12 +52,25 @@ struct ExportCard: Codable, Equatable {
     // sites keep compiling; a missing JSON key always decodes an Optional as nil, so v1/v2
     // files import with no duration.
     var durationMinutes: Int? = nil
+    // OPTIONAL, defaulted nil — NOT a defaulted non-optional array: synthesized Codable throws
+    // keyNotFound on a missing key for a non-optional array (property defaults don't apply to
+    // decoding), so the about/durationMinutes optional shape is the ONLY one that lets v1–v3
+    // files decode. The exporter always writes the key (empty array when the card has no items,
+    // keeping encoding deterministic); importers read `checklist ?? []`.
+    var checklist: [ExportChecklistItem]? = nil
     var createdAt: Date
     var updatedAt: Date
     /// Applied labels as `LabelColor` raw color names, in the fixed palette order
     /// (`LabelColor.allCases`) so the array is deterministic despite the model relationship being
     /// unordered.
     var labels: [String]
+}
+
+/// M-E: one exported checklist row. Order in the array IS the order (positions are synthesized
+/// from enumeration at materialize time, like every other position in the format).
+struct ExportChecklistItem: Codable, Equatable {
+    var text: String
+    var isDone: Bool
 }
 
 // MARK: - Mapping + coding
@@ -67,7 +80,8 @@ enum ExportDocument {
     /// v2 (M-A): + ExportBoard.about. The import gate accepts 1...formatVersion; older files
     /// decode missing fields as nil.
     /// v3 (M-B): + ExportCard.durationMinutes; includesTime is now user-settable.
-    static let formatVersion = 3
+    /// v4 (M-E): + ExportCard.checklist (Action Items; array order is the row order).
+    static let formatVersion = 4
 
     /// Maps live boards (in position order) to the export envelope. Read-only. `@MainActor`
     /// because it reads SwiftData model properties. `exportedAt` is injectable for deterministic
@@ -115,6 +129,7 @@ enum ExportDocument {
             dueDate: card.dueDate,
             includesTime: card.includesTime,
             durationMinutes: card.durationMinutes,
+            checklist: card.sortedChecklistItems.map { ExportChecklistItem(text: $0.text, isDone: $0.isDone) },
             createdAt: card.createdAt,
             updatedAt: card.updatedAt,
             labels: LabelColor.allCases.filter { owned.contains($0) }.map(\.rawValue)
@@ -180,6 +195,12 @@ enum ExportDocument {
                     }
                     if !card.includesTime || (card.durationMinutes ?? 0) <= 0 {
                         card.durationMinutes = nil
+                    }
+                    // M-E: drop whitespace-only checklist items, keep order, pass text through
+                    // verbatim (the labels-filter posture); nil stays nil (idempotent — a v≤3
+                    // file's absent checklist is not rewritten into an empty one).
+                    card.checklist = card.checklist.map { items in
+                        items.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                     }
                     return card
                 }

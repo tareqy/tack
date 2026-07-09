@@ -595,8 +595,8 @@ final class BoardStore {
     }
 
     /// Direct memberwise materialization of an import envelope. Fresh UUIDs (the format carries
-    /// none); board positions `basePosition + arrayIndex`; list/card positions from array
-    /// enumeration — DTO position fields are dead by construction (never read, so hand-edited
+    /// none); board positions `basePosition + arrayIndex`; list/card/checklist positions from
+    /// array enumeration — DTO position fields are dead by construction (never read, so hand-edited
     /// duplicates/gaps can't corrupt ordering). `BoardList.createdAt` is synthesized from
     /// `importedAt` (absent from the format). Labels attach by FETCHING the existing unique
     /// palette rows into a dictionary and appending those rows — never inserting `CardLabel`
@@ -644,6 +644,10 @@ final class BoardStore {
                         if let label = labelsByColorName[labelColorName] {
                             card.labels.append(label)
                         }
+                    }
+                    for (itemIndex, exportItem) in (exportCard.checklist ?? []).enumerated() {
+                        context.insert(ChecklistItem(text: exportItem.text, isDone: exportItem.isDone,
+                                                     position: itemIndex, card: card))
                     }
                 }
             }

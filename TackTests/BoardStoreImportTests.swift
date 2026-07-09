@@ -221,6 +221,28 @@ struct BoardStoreImportTests {
         #expect(fetchBoards(env.context).map(\.name) == ["Survivor"])
     }
 
+    @Test("M-E: import materializes checklist items in array order with positions 0..<n")
+    func importMaterializesChecklistItems() throws {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        var card = ExportCard(title: "C", details: nil, position: 0, dueDate: nil,
+                              includesTime: false, createdAt: .now, updatedAt: .now, labels: [])
+        card.checklist = [ExportChecklistItem(text: "One", isDone: true),
+                          ExportChecklistItem(text: "Two", isDone: false)]
+        let envelope = ExportEnvelope(formatVersion: 4, exportedAt: .now, boards: [
+            ExportBoard(name: "B", emoji: nil, position: 0, themeName: "default",
+                        customThemeHex: nil, createdAt: .now,
+                        lists: [ExportList(name: "L", position: 0, isCollapsed: false, cards: [card])]),
+        ])
+
+        let imported = try env.store.importBoards(envelope)
+
+        let items = imported[0].sortedLists[0].sortedCards[0].sortedChecklistItems
+        #expect(items.map(\.text) == ["One", "Two"])
+        #expect(items.map(\.isDone) == [true, false])
+        #expect(items.map(\.position) == [0, 1])
+    }
+
     // MARK: - Byte-equality round trip (Task 4; the strongest cheap oracle)
 
     @Test("export → import into a fresh store → re-export reproduces the original bytes")

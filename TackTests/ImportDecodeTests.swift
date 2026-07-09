@@ -21,11 +21,12 @@ struct ImportDecodeTests {
     }
 
     private func cardJSON(labels: String = "[]", dueDate: String? = nil, includesTime: Bool = false,
-                          durationMinutes: Int? = nil) -> String {
+                          durationMinutes: Int? = nil, checklist: String? = nil) -> String {
         let due = dueDate.map { "\"dueDate\":\"\($0)\"," } ?? ""
         let duration = durationMinutes.map { "\"durationMinutes\":\($0)," } ?? ""
+        let checklistFragment = checklist.map { "\"checklist\":\($0)," } ?? ""
         return """
-        {"createdAt":"2026-01-01T00:00:00Z","details":null,\(due)\(duration)"includesTime":\(includesTime),
+        {\(checklistFragment)"createdAt":"2026-01-01T00:00:00Z","details":null,\(due)\(duration)"includesTime":\(includesTime),
          "labels":\(labels),"position":0,"title":"C","updatedAt":"2026-01-01T00:00:00Z"}
         """
     }
@@ -68,9 +69,9 @@ struct ImportDecodeTests {
         catch { Issue.record("expected ImportError, got \(error)") }
     }
 
-    @Test("formatVersion 4 and 0 throw .unsupportedVersion carrying the file's version")
+    @Test("formatVersion 5 and 0 throw .unsupportedVersion carrying the file's version")
     func versionGate() {
-        for version in [4, 0] {
+        for version in [5, 0] {
             do { _ = try ExportDocument.decodeForImport(json("", formatVersion: version)) }
             catch let error as ImportError { #expect(error == .unsupportedVersion(version)) }
             catch { Issue.record("expected ImportError, got \(error)") }
@@ -93,6 +94,26 @@ struct ImportDecodeTests {
         let envelope = try ExportDocument.decodeForImport(data)
         #expect(envelope.formatVersion == 2)
         #expect(envelope.boards[0].lists[0].cards[0].durationMinutes == nil)
+    }
+
+    @Test("a version-3 file (no checklist key) still imports; checklist decodes nil")
+    func v3FileStillImports() throws {
+        let data = json(boardJSON(cards: cardJSON()), formatVersion: 3)
+        let envelope = try ExportDocument.decodeForImport(data)
+        #expect(envelope.formatVersion == 3)
+        #expect(envelope.boards[0].lists[0].cards[0].checklist == nil,
+                "missing key decodes nil — the optional-not-defaulted-array shape is load-bearing")
+    }
+
+    @Test("whitespace-only checklist items are dropped; kept items pass through in order, text verbatim")
+    func checklistWhitespaceItemsDropped() throws {
+        let payload = #"[{"text":"  Keep  ","isDone":true},{"text":"   ","isDone":false},{"text":"Also keep","isDone":false}]"#
+        let envelope = try ExportDocument.decodeForImport(
+            json(boardJSON(cards: cardJSON(checklist: payload)), formatVersion: 4))
+        #expect(envelope.boards[0].lists[0].cards[0].checklist == [
+            ExportChecklistItem(text: "  Keep  ", isDone: true),
+            ExportChecklistItem(text: "Also keep", isDone: false),
+        ], "drop whitespace-only, never rewrite kept text — the labels-filter posture")
     }
 
     @Test("fractional-second ISO dates throw .unreadable (Foundation .iso8601 rejects them)")
@@ -195,7 +216,8 @@ struct ImportDecodeTests {
     @Test("sanitization is idempotent: decode(encode(decoded)) == decoded")
     func sanitizeIdempotent() throws {
         let data = json(boardJSON(cards: cardJSON(labels: #"["blue","red","neon"]"#,
-                                                  dueDate: "2026-07-08T15:30:00Z") + "," +
+                                                  dueDate: "2026-07-08T15:30:00Z",
+                                                  checklist: #"[{"text":"A","isDone":true},{"text":" ","isDone":false}]"#) + "," +
                                          cardJSON(dueDate: "2026-07-08T15:30:00Z",
                                                   includesTime: true, durationMinutes: 45),
                           customThemeHex: "\"#ff0000\""))
