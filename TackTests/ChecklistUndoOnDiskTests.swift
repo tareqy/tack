@@ -20,40 +20,7 @@ import SwiftData
 @Suite("Checklist cascade-delete on-disk smoke", .serialized)
 struct ChecklistUndoOnDiskTests {
 
-    /// On-disk equivalent of `TestContainer(withUndo: true)` — copied verbatim from
-    /// ImportUndoOnDiskTests.OnDiskStore (private there; deliberately duplicated, not promoted —
-    /// two spike files, promotion can wait for a third user): sqlite under a unique temp dir,
-    /// UndoManager with `groupsByEvent = false` (headless — no run loop to open event groups).
-    @MainActor
-    private struct OnDiskStore {
-        let directory: URL
-        let container: ModelContainer
-        let context: ModelContext
-        let store: BoardStore
-        let undoManager: UndoManager
-
-        init() throws {
-            directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("TackChecklistSpike-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let schema = Schema(versionedSchema: TackSchemaV1.self)
-            let configuration = ModelConfiguration(schema: schema, url: directory.appendingPathComponent("spike.sqlite"))
-            container = try ModelContainer(for: schema, migrationPlan: TackMigrationPlan.self,
-                                           configurations: [configuration])
-            context = container.mainContext
-            let manager = UndoManager()
-            manager.groupsByEvent = false
-            context.undoManager = manager
-            undoManager = manager
-            store = BoardStore(context: context)
-        }
-
-        /// Best-effort (the ImportUndoOnDiskTests caveat verbatim): no public close API, so the
-        /// sqlite file is unlinked while open — a harmless stderr line, assertions already ran.
-        func tearDown() {
-            try? FileManager.default.removeItem(at: directory)
-        }
-    }
+    // OnDiskTestStore: see TackTests/Helpers — promoted at the third user (M-F).
 
     private static let itemTexts = ["Renew library card", "Gather books from car", "Pay late fee"]
 
@@ -62,7 +29,7 @@ struct ChecklistUndoOnDiskTests {
     /// inserted directly (the FixtureSeeder.seedSpike precedent) — the staged store path
     /// (`applyCardEdits`' checklist parameter) doesn't exist until Task 1, and setup writes must
     /// not sit on the stack anyway.
-    private func seed(_ env: OnDiskStore) throws -> (toDo: BoardList, target: Card) {
+    private func seed(_ env: OnDiskTestStore) throws -> (toDo: BoardList, target: Card) {
         env.store.ensureLabelsSeeded()
         let board = env.store.createBoard(name: "Spike", emoji: nil)
         let toDo = board.sortedLists[0]
@@ -78,7 +45,7 @@ struct ChecklistUndoOnDiskTests {
 
     @Test("on-disk deleteCard: full cascade, survivors renumbered, detach discipline clean")
     func onDiskDeleteCardSmoke() throws {
-        let env = try OnDiskStore()
+        let env = try OnDiskTestStore(directoryPrefix: "TackChecklistSpike")
         defer { env.tearDown() }
         let (toDo, target) = try seed(env)
         _ = env.store.addCard(to: toDo, title: "Tail") // a pre-delete group that must be CLEARED
@@ -104,7 +71,7 @@ struct ChecklistUndoOnDiskTests {
 
     @Test("on-disk deleteList: cascade through cards to items, detach discipline clean")
     func onDiskDeleteListSmoke() throws {
-        let env = try OnDiskStore()
+        let env = try OnDiskTestStore(directoryPrefix: "TackChecklistSpike")
         defer { env.tearDown() }
         let (toDo, _) = try seed(env)
         let board = try #require(toDo.board)

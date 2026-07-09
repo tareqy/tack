@@ -17,6 +17,14 @@ final class Board {
     @Relationship(deleteRule: .cascade, inverse: \BoardList.board)
     var lists: [BoardList]
 
+    /// M-F: the containing Area, nil = ungrouped (the default — grouping is opt-in). The plain
+    /// optional side of Area's `.nullify` relationship (the Card.list shape). NOTE this is the
+    /// first to-one added on the parent side of the graph (the FK column lands on Board's own
+    /// table) — still additive-optional in shape, but Task 4's human checklist includes opening
+    /// a pre-M-F store to smoke the migration. `position` stays GLOBAL across all boards
+    /// regardless of area (PRD §6.2, M-F): the sidebar groups at render time.
+    var area: Area?
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -26,7 +34,8 @@ final class Board {
         themeName: String = "default",
         customThemeHex: String? = nil,
         createdAt: Date = .now,
-        lists: [BoardList] = []
+        lists: [BoardList] = [],
+        area: Area? = nil
     ) {
         self.id = id
         self.name = name
@@ -37,6 +46,7 @@ final class Board {
         self.customThemeHex = customThemeHex
         self.createdAt = createdAt
         self.lists = lists
+        self.area = area
     }
 
     var sortedLists: [BoardList] { lists.sorted { $0.position < $1.position } }

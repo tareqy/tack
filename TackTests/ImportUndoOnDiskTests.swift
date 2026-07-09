@@ -17,44 +17,11 @@ import SwiftData
 @Suite("Import on-disk smoke", .serialized)
 struct ImportUndoOnDiskTests {
 
-    /// On-disk equivalent of `TestContainer(withUndo: true)`: sqlite under a unique temp dir,
-    /// UndoManager with `groupsByEvent = false` (headless — no run loop to open event groups).
-    @MainActor
-    private struct OnDiskStore {
-        let directory: URL
-        let container: ModelContainer
-        let context: ModelContext
-        let store: BoardStore
-        let undoManager: UndoManager
-
-        init() throws {
-            directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("TackImportSmoke-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let schema = Schema(versionedSchema: TackSchemaV1.self)
-            let configuration = ModelConfiguration(schema: schema, url: directory.appendingPathComponent("smoke.sqlite"))
-            container = try ModelContainer(for: schema, migrationPlan: TackMigrationPlan.self,
-                                           configurations: [configuration])
-            context = container.mainContext
-            let manager = UndoManager()
-            manager.groupsByEvent = false
-            context.undoManager = manager
-            undoManager = manager
-            store = BoardStore(context: context)
-        }
-
-        /// Best-effort: SwiftData's ModelContainer has no public close API and `env` outlives this
-        /// deferred call, so the sqlite file is unlinked while the store is still open — macOS
-        /// logs a harmless "vnode unlinked while in use" to stderr. Accepted: assertions have all
-        /// run by then, and the temp dir is gone either way.
-        func tearDown() {
-            try? FileManager.default.removeItem(at: directory)
-        }
-    }
+    // OnDiskTestStore: see TackTests/Helpers — promoted at the third user (M-F).
 
     @Test("on-disk import materializes, persists, and completes the detach discipline cleanly")
     func onDiskImportSmoke() throws {
-        let env = try OnDiskStore()
+        let env = try OnDiskTestStore(directoryPrefix: "TackImportSpike")
         defer { env.tearDown() }
         env.store.ensureLabelsSeeded()
         env.store.createBoard(name: "Seeded", emoji: nil)

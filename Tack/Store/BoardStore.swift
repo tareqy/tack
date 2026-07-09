@@ -14,6 +14,7 @@ extension Board: PositionedEntity {}
 extension BoardList: PositionedEntity {}
 extension Card: PositionedEntity {}
 extension ChecklistItem: PositionedEntity {}
+extension Area: PositionedEntity {}
 
 /// M-E: one staged checklist row of the card-detail sheet — a plain value the view stages and
 /// `applyCardEdits` diffs against the persisted rows. `id` is the persisted `ChecklistItem.id`
@@ -189,6 +190,66 @@ final class BoardStore {
         guard newOrder != ids else { return }
         withUndoGroup("Move Board") {
             applyPositions(newOrder, to: boards)
+            save()
+        }
+    }
+
+    // MARK: - Areas (M-F)
+
+    /// M-F: find-or-CREATE an area by its EXACT whitespace-trimmed name (case-sensitive — the
+    /// ONE merge key shared with import's area merge and AreaNameSheet's rename gate; exact
+    /// match is the CardLabel attach-by-name precedent, and a locale-sensitive comparison would
+    /// make merges machine-dependent). A matching existing area is reused — so duplicate area
+    /// names are impossible via any path, and "New Area…" with an existing name simply moves
+    /// the board there. On create, `board` (when non-nil) joins the area in the SAME "New Area"
+    /// undo step, so the context menu's New Area… gesture costs one ⌘Z. Returns nil only for a
+    /// whitespace-only name (the sheet disables Save; this is the store backstop).
+    /// TRIAL FORM (M-F Task 0 spike, leg C): the insert+relationship write runs under one
+    /// withUndoGroup; the spike verdict decides whether it stays (Task 1a) or splits (Task 1b).
+    @discardableResult
+    func createArea(named name: String, moving board: Board?) -> Area? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let existing = fetchAreas().first(where: { $0.name == trimmed }) {
+            if let board { setArea(board, to: existing) }
+            return existing
+        }
+        var created: Area!
+        withUndoGroup("New Area") {
+            let position = (fetchAreas().map(\.position).max() ?? -1) + 1
+            let area = Area(name: trimmed, position: position)
+            context.insert(area)
+            if let board { board.area = area }
+            save()
+            created = area
+        }
+        return created
+    }
+
+    /// M-F: moves a board between areas (nil = ungrouped). Rewrites ONLY `board.area` — the
+    /// global `Board.position` is untouched (design (b)): the row renders under a different
+    /// header, the total order of boards is unchanged, so ⌘1–⌘9 / SelectionRestore /
+    /// NextBoardSelection never notice. One undo step; a same-area call is a whole-call no-op
+    /// (opens no group, does not save).
+    /// TRIAL FORM (M-F Task 0 spike, leg B): a relationship reassignment across up to TWO
+    /// Area.boards inverse collections — the moveCard cross-list hazard shape one level up.
+    func setArea(_ board: Board, to area: Area?) {
+        guard board.area?.id != area?.id else { return }
+        withUndoGroup(area == nil ? "Remove from Area" : "Move to Area") {
+            board.area = area
+            save()
+        }
+    }
+
+    /// M-F: deletes the area; the `.nullify` rule releases its boards to ungrouped — boards are
+    /// NEVER deleted and their global positions are untouched, so area delete's blast radius is
+    /// strictly smaller than a single board delete.
+    /// TRIAL FORM (M-F Task 0 spike, leg A): an N-board relationship release under undo
+    /// snapshotting. Task 1a keeps this withUndoGroup form (verdict GREEN) or Task 1b rewrites
+    /// it to deleteBoard's detach-and-clear (verdict RED — the pre-agreed fallback).
+    func deleteArea(_ area: Area) {
+        withUndoGroup("Delete Area") {
+            context.delete(area)
             save()
         }
     }
@@ -720,6 +781,14 @@ final class BoardStore {
     private func fetchLabels() -> [CardLabel] {
         (try? context.fetch(FetchDescriptor<CardLabel>())) ?? []
     }
+
+    private func fetchAreas() -> [Area] {
+        (try? context.fetch(FetchDescriptor<Area>())) ?? []
+    }
+
+    /// Test-support read (AreaUndoOnDiskTests + BoardStoreAreaTests): the private fetch, exposed
+    /// read-only. Views use @Query; only tests need a store-side fetch.
+    func fetchAreasForTesting() -> [Area] { fetchAreas() }
 
     private func save() {
         do {
