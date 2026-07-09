@@ -284,9 +284,9 @@ Read every log to completion. A run stuck past ~6 minutes: kill both processes, 
 
 Fill in, in THIS file:
 
-> **Spike outcome (2026-07-__): GREEN / RED** — runs: _ / 3 passing.
-> Evidence: `.build/me-task0-spike-{1,2,3}.log` — <one line: what failed (exact assertion text or crash frame), or "both legs, all assertions, 3/3 runs green">.
-> Consequence: Task __ (1a/1b) runs; the other is checked off as `(skipped — spike verdict)`.
+> **Spike outcome (2026-07-09): RED** — runs: 0 / 3 passing.
+> Evidence: `.build/me-task0-spike-{1,2,3}.log` — both legs crashed in all 3 runs with `SwiftData/ModelSnapshot.swift:46: Fatal error: Unexpected backing data for snapshot creation: SwiftData._FullFutureBackingData<Tack.ChecklistItem>` (leg A, all 3 runs) / `<...Tack.Card>` or `<...Tack.ChecklistItem>` (leg B, varies by run) — the crash fires immediately inside `deleteCard`/`deleteList`'s own `withUndoGroup` (undo-snapshot creation of the cascade-deleted rows), before `undoManager.undo()` is ever called.
+> Consequence: Task 1b runs; Task 1a is checked off as `(skipped — spike verdict)`.
 
 - [ ] **Step 5: Full unit suite** — `pkill -f xcodebuild; pkill -f Tack.app; make unit 2>&1 | tee .build/me-task0-unit.log` → `** TEST SUCCEEDED **` (the schema addition must not disturb any existing suite; `Card.init`'s defaulted parameter keeps every construction site compiling). If the spike itself is RED, run the rest of the suite with `-skip-testing:TackTests/ChecklistUndoOnDiskTests` for THIS gate only — Task 1b rewrites the file before the next full-suite gate.
 

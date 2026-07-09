@@ -22,6 +22,11 @@ final class Card {
     @Relationship(inverse: \CardLabel.cards)
     var labels: [CardLabel]
 
+    /// M-E: checklist ("Action Items") rows. Cascade like Board.lists/BoardList.cards; the
+    /// inverse is declared here only (ChecklistItem.card is a plain optional, the Card.list shape).
+    @Relationship(deleteRule: .cascade, inverse: \ChecklistItem.card)
+    var checklistItems: [ChecklistItem]
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -33,7 +38,8 @@ final class Card {
         createdAt: Date = .now,
         updatedAt: Date = .now,
         list: BoardList? = nil,
-        labels: [CardLabel] = []
+        labels: [CardLabel] = [],
+        checklistItems: [ChecklistItem] = []
     ) {
         self.id = id
         self.title = title
@@ -46,5 +52,8 @@ final class Card {
         self.updatedAt = updatedAt
         self.list = list
         self.labels = labels
+        self.checklistItems = checklistItems
     }
+
+    var sortedChecklistItems: [ChecklistItem] { checklistItems.sorted { $0.position < $1.position } }
 }
