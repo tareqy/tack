@@ -210,8 +210,9 @@ final class BoardStore {
     /// the board there. On create, `board` (when non-nil) joins the area in the SAME "New Area"
     /// undo step, so the context menu's New Area… gesture costs one ⌘Z. Returns nil only for a
     /// whitespace-only name (the sheet disables Save; this is the store backstop).
-    /// TRIAL FORM (M-F Task 0 spike, leg C): the insert+relationship write runs under one
-    /// withUndoGroup; the spike verdict decides whether it stays (Task 1a) or splits (Task 1b).
+    /// M-F spike verdict GREEN (AreaUndoOnDiskTests, 3/3 on-disk runs): undo/redo of this
+    /// relationship write is integrity-safe — the suite stays in the repo as the regression
+    /// sentinel for exactly this claim.
     @discardableResult
     func createArea(named name: String, moving board: Board?) -> Area? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

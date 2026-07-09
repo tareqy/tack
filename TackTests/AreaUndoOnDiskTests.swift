@@ -16,16 +16,23 @@ import SwiftData
 /// run-to-run) and never bare "didn't crash" (the known failure mode is SILENT wrong state
 /// after redo, not just a crash).
 ///
-/// VERDICT PROTOCOL (per LEG, judged independently): run the suite 3×. A leg is GREEN when its
-/// tests pass in 3/3 runs; RED on any crash, hang (>6 min IS a hang), or failed assertion in
-/// any run. A crash aborts the runner and MASKS later tests — the suite is .serialized with the
-/// delete leg LAST for exactly that reason; any masked test is re-run individually 3× via
-/// -only-testing:TackTests/AreaUndoOnDiskTests/<testName> before its leg is judged.
-/// GREEN legs keep their trial withUndoGroup forms (Task 1a; this file stays verbatim as the
-/// regression sentinel). RED legs take their PRE-AGREED fallback (Task 1b): leg A (deleteArea)
-/// → deleteBoard's detach-and-clear, non-undoable, stack-wiping; leg B (setArea) → moveCard's
-/// manual-inverse registerUndoable pattern; leg C (createArea moving a board) → the area insert
-/// keeps withUndoGroup and the board move routes through setArea's shipped form afterwards.
+/// VERDICT (2026-07-09, recorded in the M-F plan's ledger,
+/// docs/superpowers/plans/2026-07-09-areas.md): three full on-disk suite runs, judged per leg.
+/// Leg A (deleteArea): RED, 0/3 — `undo()` correctly restored the Area ROW but silently dropped
+/// the `.nullify` inverse's MEMBERSHIP (`sortedBoards` came back `[]` where alpha/beta were
+/// expected), no crash. Ships NON-undoable via `deleteBoard`'s detach-and-clear
+/// (`BoardStore.deleteArea`); its test below is reduced to the on-disk smoke
+/// `onDiskDeleteAreaSmoke`. Leg B (setArea): RED as a whole — the area↔area reassignment
+/// (`setAreaBetweenAreasUndoRedoIntegrity`) passed 3/3, but the nil↔area/area↔nil leg
+/// (`setAreaIntoAreaFromUngroupedUndoRedo`) failed 0/3 with the identical silent-membership-loss
+/// shape one relationship collection lighter, no crash. Ships on `moveCard`'s manual-inverse
+/// `registerUndoable` pattern (`BoardStore.setArea`); both leg B tests below are UNCHANGED and
+/// now pass 3/3 as the fallback's own acceptance tests. Leg C (createArea moving a board):
+/// GREEN, 3/3 — KEEPS its trial `withUndoGroup` form verbatim (`BoardStore.createArea`); its
+/// test below is unchanged. This suite now stands as the permanent regression sentinel for all
+/// three claims: silent membership loss after undo/redo is the exact mode it is designed to
+/// catch before any user does — an OS update to SwiftData's undo snapshotting is the likeliest
+/// regression vector.
 @MainActor
 @Suite("Area relationship-undo on-disk spike", .serialized)
 struct AreaUndoOnDiskTests {
