@@ -287,7 +287,6 @@ struct RootView: View {
             boardNames: sortedBoards.map(\.name),
             exportAllBoards: presentExporter,
             importBoards: { isPresentingImporter = true },
-            currentViewMode: selectedBoard == nil ? nil : selectedBoardViewMode,
             setViewMode: setViewMode
         )
     }

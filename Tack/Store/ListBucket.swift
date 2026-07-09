@@ -64,7 +64,7 @@ enum ListBucket: CaseIterable {
     }
 
     /// STABLE synthetic identity for the bucket when it stands in as a `ListSnapshot.id` in a
-    /// `BoardSnapshot` (see `ListBucketSnapshot.build`, Task 2) — which is what lets
+    /// `BoardSnapshot` (see `ListBucketSnapshot.build`) — which is what lets
     /// `SelectionNavigation` drive arrow-key movement across bucket sections with zero changes.
     /// Fixed literals, NOT `UUID()`: a fresh id per access would break snapshot equality and any
     /// caller that correlates buckets across two builds. ("4C" = "L" for List.)

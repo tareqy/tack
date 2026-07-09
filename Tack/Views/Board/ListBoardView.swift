@@ -137,12 +137,18 @@ struct ListBoardView: View {
     }
 
     /// List-mode command surface. REAL: selection (`selectedCard`), ⌘O open, ⌘⌫ delete, and
-    /// bare-arrow navigation over the bucket snapshot. HONESTLY DISABLED: `canCreateCard: false`
-    /// (which list would a computed bucket create into?), `canMoveSelectedCard` false (⌘-arrow
-    /// moves have no meaning between derived buckets), and `canFilter: false` (the M-C flag —
-    /// View ▸ Filter by Label grays out instead of firing a silent no-op). KNOWN wart, accepted
-    /// for v1: "New List" (⌥⌘N) enablement keys off boardActions' mere presence in AppCommands,
-    /// so it stays enabled here and no-ops — creation lives in board mode.
+    /// bare-arrow navigation over the bucket snapshot. HONESTLY DISABLED, all of them via a
+    /// published `false` flag rather than an enabled-but-inert item: `canCreateCard: false`
+    /// (which list would a computed bucket create into?), Card ▸ Move Card Left/Right/Up/Down
+    /// (⌘-arrow moves have no meaning between derived buckets — Left/Right via
+    /// `canMoveSelectedCard` returning false for every direction, Up/Down via `canMoveCards:
+    /// false`), `canCreateList: false` (File ▸ New List — no canvas to open the inline editor
+    /// on), and `canFilter: false` (the M-C flag — View ▸ Filter by Label). Note ⌘N / File ▸ New
+    /// Tack Window is a DELIBERATE exception to this pattern: it isn't gated by any BoardActions
+    /// flag at all — with `canCreateCard: false` disabling File ▸ New Card, AppCommands' "first
+    /// enabled key-equivalent match wins" ordering (see that file's header comment) lets ⌘N fall
+    /// through past the disabled New Card item to the system New Window item, which is the
+    /// intended behavior, not a gap.
     private var boardActions: BoardActions {
         BoardActions(
             selectedCard: selectedCard,
@@ -155,7 +161,9 @@ struct ListBoardView: View {
             moveSelection: moveSelection,
             canMoveSelectedCard: { _ in false },
             toggleLabelFilterBar: {},
-            canFilter: false
+            canFilter: false,
+            canMoveCards: false,
+            canCreateList: false
         )
     }
 

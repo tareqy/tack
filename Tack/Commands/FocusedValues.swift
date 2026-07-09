@@ -42,8 +42,23 @@ struct BoardActions {
     /// label filter bar is board-canvas-only in v1 — `ListBoardView` publishes real boardActions
     /// but passes `false` here so the menu item disables HONESTLY instead of staying enabled and
     /// firing a silent no-op (the same enabled-but-inert trap E-02's manual gate flagged for
-    /// Export). Defaulted `true` so `BoardView`'s construction is untouched.
+    /// Export). Defaulted `true` so `BoardView`'s construction is untouched — a defaulted `var` is
+    /// required here, not a `let`: a defaulted `let` is excluded from the memberwise init, so
+    /// every existing call site (including `BoardView`'s) would fail to compile without it.
     var canFilter: Bool = true
+    /// M-C fix: whether Card ▸ "Move Card Up"/"Move Card Down" (⌘-arrow) apply to the current
+    /// board surface. List mode has no positional insert semantics — a computed due-date bucket
+    /// has no "up"/"down" to move a card into — so `ListBoardView` passes `false` here to disable
+    /// the items HONESTLY instead of leaving them enabled-but-inert (found in the M-C whole-branch
+    /// review: selecting a card in list mode left Move Up/Down enabled and silently did nothing).
+    /// Defaulted `true` so `BoardView`'s construction is untouched — same defaulted-`var`-not-`let`
+    /// reasoning as `canFilter` above (a defaulted `let` drops out of the memberwise init).
+    var canMoveCards: Bool = true
+    /// M-C fix: whether File ▸ "New List" (⌥⌘N) applies to the current board surface. Same trap
+    /// shape as `canMoveCards` — list mode has nowhere on the canvas to open the inline add-list
+    /// editor — so `ListBoardView` passes `false` here. Defaulted `true` so `BoardView`'s
+    /// construction is untouched — same defaulted-`var`-not-`let` reasoning as `canFilter`.
+    var canCreateList: Bool = true
 }
 
 /// Board-navigation command surface published by `RootView`: always present (RootView is always in
@@ -63,9 +78,6 @@ struct BoardSelectionActions {
     /// `.fileImporter` — a `Commands` value can't present one, same constraint as the exporter).
     /// Always enabled, including at zero boards: restore-into-an-empty-app is the headline case.
     let importBoards: () -> Void
-    /// M-C: the SELECTED board's current view mode — nil when no board is selected. Read by the
-    /// toolbar switcher's mirror in the View menu (as Board / as List) for enablement.
-    let currentViewMode: BoardViewMode?
     /// M-C: sets the selected board's view mode (View ▸ as Board ⌥⌘B / as List ⌥⌘L; the toolbar
     /// switcher writes through `RootView`'s binding to the same map). No-op when no board is
     /// selected — the backstop behind the menu items' `.disabled` gate.

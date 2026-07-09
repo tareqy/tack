@@ -138,6 +138,20 @@ struct BoardViewModeCodecTests {
         let raw = "not-a-uuid=list,\(a.uuidString)=list,\(UUID().uuidString)=grid,,justgarbage"
         #expect(BoardViewMode.decode(raw) == [a: .list])
     }
+
+    @Test("a duplicate key keeps the LAST entry's value, not the first")
+    func decodeDuplicateKeyLastWins() {
+        let a = UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000000")!
+        #expect(BoardViewMode.decode("\(a.uuidString)=board,\(a.uuidString)=list") == [a: .list])
+    }
+
+    @Test("encode(decode(canonical)) round-trips the canonical literal byte-for-byte")
+    func encodeDecodeCanonicalRoundTrip() {
+        let a = UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000000")!
+        let b = UUID(uuidString: "BBBBBBBB-0000-4000-8000-000000000000")!
+        let canonical = "\(a.uuidString)=board,\(b.uuidString)=list"
+        #expect(BoardViewMode.encode(BoardViewMode.decode(canonical)) == canonical)
+    }
 }
 
 /// M-C: the live-board → bucket-sections bridge. Uses TestContainer (in-memory) because the

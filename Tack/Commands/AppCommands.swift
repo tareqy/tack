@@ -26,7 +26,7 @@ struct AppCommands: Commands {
 
             Button("New List") { boardActions?.newList() }
                 .keyboardShortcut("n", modifiers: [.command, .option])
-                .disabled(boardActions == nil)
+                .disabled(boardActions == nil || boardActions?.canCreateList == false)
 
             // Ellipsis: opens the naming sheet — further input before anything is created (HIG).
             Button("New Board…") { guardedMutation { boardSelection?.newBoard() } }
@@ -75,11 +75,13 @@ struct AppCommands: Commands {
 
             Button("Move Card Up") { guardedMutation { boardActions?.moveSelectedCard(.up) } }
                 .keyboardShortcut(.upArrow, modifiers: .command)
-                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive
+                          || boardActions?.canMoveCards == false)
 
             Button("Move Card Down") { guardedMutation { boardActions?.moveSelectedCard(.down) } }
                 .keyboardShortcut(.downArrow, modifiers: .command)
-                .disabled(boardActions?.selectedCard == nil || isTextInputActive)
+                .disabled(boardActions?.selectedCard == nil || isTextInputActive
+                          || boardActions?.canMoveCards == false)
 
             Divider()
 
