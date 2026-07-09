@@ -126,9 +126,9 @@ struct ListColumnView: View {
     /// pluralization instead of "Its 1 cards will be deleted."
     private var deleteListMessage: String {
         switch list.cards.count {
-        case 0: "This list is empty."
-        case 1: "This also deletes its 1 card."
-        default: "This also deletes its \(list.cards.count) cards."
+        case 0: "This list is empty. You can't undo this."
+        case 1: "This also deletes its 1 card. You can't undo this."
+        default: "This also deletes its \(list.cards.count) cards. You can't undo this."
         }
     }
 

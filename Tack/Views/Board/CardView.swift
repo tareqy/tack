@@ -181,6 +181,7 @@ struct CardView: View {
                 Text("\(done)/\(total)")
                     .font(.caption2)
                     .monospacedDigit()
+                    .lineLimit(1)
             }
             .foregroundStyle(.secondary)
             // The labelDots/DueDateBadge pattern: a representation Text whose TEXT is the machine

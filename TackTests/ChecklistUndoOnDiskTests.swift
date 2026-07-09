@@ -108,11 +108,15 @@ struct ChecklistUndoOnDiskTests {
         defer { env.tearDown() }
         let (toDo, _) = try seed(env)
         let board = try #require(toDo.board)
+        _ = env.store.addCard(to: board.sortedLists[1], title: "Tail") // a pre-delete group that must be CLEARED
+        // Hold a real undoable group on the stack to prove the delete clears it.
+        #expect(env.undoManager.canUndo == true)
 
         env.store.deleteList(toDo)
 
         #expect(try env.context.fetchCount(FetchDescriptor<BoardList>()) == 2)
-        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 0)
+        // Only toDo's own 2 cards cascade-delete; "Tail" lives on the surviving "In Progress" list.
+        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 1)
         #expect(try env.context.fetchCount(FetchDescriptor<ChecklistItem>()) == 0)
         #expect(board.sortedLists.map(\.name) == ["In Progress", "Done"])
         #expect(board.sortedLists.map(\.position) == [0, 1])
