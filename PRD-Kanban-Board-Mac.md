@@ -342,7 +342,7 @@ These are explicitly deferred beyond the MVP, with an indicative roadmap priorit
 | Feature | Roadmap Priority | Reason |
 |---------|------|--------|
 | Multi-user collaboration / real-time sync (incl. card comments/discussion) | P2 | Requires backend infrastructure; not part of the "native Mac replacement" pitch. Also blocks the "small teams (2–8)" segment (§3) until shipped |
-| Card checklists (sub-tasks) | P2 | Nice-to-have but adds complexity to the card detail view |
+| Card checklists (sub-tasks) | P2 | **Shipped post-MVP (M-E)** as "Action Items" — a staged checklist section in the card detail sheet (Save/Cancel contract: one `applyCardEdits` commit, one ⌘Z per sheet; no per-item live writes), a done/total fraction on the card face, and export `formatVersion` 4 carrying items. No reorder UI in v1 (insertion order = position). Undo posture per the M-E cascade spike: card/list deletes are no longer undoable — see §4.7, U-01 |
 | Attachments / file uploads | P2 | Needs a storage/sync model; low priority for MVP |
 | Card activity log | P1 | Tracked as C-09 (§4.3); single-user edit history, independent of multi-user collaboration |
 | Apple Watch companion | P2 | Small screen doesn't suit Kanban well |
@@ -485,7 +485,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - L-05 List background colors
 - D-04 Sync due dates → Apple Reminders (EventKit)
 - Multi-user collaboration / real-time sync (also unlocks the "small teams" segment, §3)
-- Card checklists (sub-tasks)
+- Card checklists (sub-tasks) — **shipped post-MVP (M-E)** as Action Items (see §7)
 - Attachments / file uploads
 - Apple Watch companion
 - Cloud sync
