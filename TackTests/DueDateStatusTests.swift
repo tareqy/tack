@@ -135,4 +135,17 @@ struct DueDateStatusTests {
         #expect(DueDateStatus.classify(dueDate: nil, includesTime: true, durationMinutes: 30,
                                        now: now, calendar: calendar) == .none)
     }
+
+    @Test("exactly at the due time (now == dueDate, no duration) is today, not overdue")
+    func timedExactlyAtDueTimeIsToday() {
+        let due = date(2026, 7, 5, 15, 30) // same instant as now — strictly-past contract: not yet overdue
+        #expect(DueDateStatus.classify(dueDate: due, includesTime: true, now: now, calendar: calendar) == .today)
+    }
+
+    @Test("exactly at the slot end (now == dueDate + duration) is today, not overdue")
+    func timedExactlyAtSlotEndIsToday() {
+        let due = date(2026, 7, 5, 14, 30) // 60-min slot ends 15:30 == now — strictly-past contract: not yet overdue
+        #expect(DueDateStatus.classify(dueDate: due, includesTime: true, durationMinutes: 60,
+                                       now: now, calendar: calendar) == .today)
+    }
 }
