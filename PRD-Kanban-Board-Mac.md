@@ -115,7 +115,7 @@ Lists are columns within a board — the primary organizational unit of Kanban f
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
 | L-01 | Create list with name | P0 | Inline edit; "Add List" button at board's right edge |
-| L-02 | Rename / delete lists | P0 | Delete requires confirmation (cards may exist); undoable via ⌘Z (see §4.7, U-01) |
+| L-02 | Rename / delete lists | P0 | Delete requires confirmation (cards may exist); **not undoable since M-E** (same spike-forced detach discipline as board delete — see §4.7, U-01); rename remains undoable |
 | L-03 | Reorder lists via drag-and-drop | P0 | SwiftUI `.draggable`/`.dropDestination` with visual ghost indicator during drag (see A-04, §8) |
 | L-04 | Collapse/expand lists | P1 | "Archive" is post-MVP |
 | L-05 | List background colors | P2 | Optional visual distinction between columns |
@@ -136,7 +136,7 @@ Cards are individual tasks/items within a list — the most interactive element 
 | C-02 | Edit card title inline | P0 | Double-click the title (or context menu ▸ Rename Card) to edit inline; Enter to save, Esc to cancel; a single click selects the card |
 | C-03 | Reorder cards within a list (drag-and-drop) | P0 | SwiftUI `.draggable`/`.dropDestination`; visual ghost indicator during drag; snap-to-grid animation |
 | C-04 | Move cards between lists (drag-and-drop) | P0 | Cards can be dropped on the target list area; keyboard/VoiceOver alternative is C-11 (⌘+←/→) or the context-menu "Move to List" fallback (see A-04, §8) |
-| C-05 | Delete card (no confirmation; undoable) | P0 | `⌘⌫` deletes the focused/selected card immediately with **no confirmation dialog** (Finder `⌘⌫` pattern); undoable via ⌘Z (see §4.7, U-01) |
+| C-05 | Delete card (no confirmation; NOT undoable since M-E) | P0 | `⌘⌫` deletes the focused/selected card immediately with **no confirmation dialog** (Finder `⌘⌫` pattern). **Not undoable since M-E** — the checklist cascade spike showed SwiftData's undo of a card delete violating integrity once cards carry checklist items (see §4.7, U-01), so card delete now uses the board-delete detach discipline. Follow-up: a confirmation dialog or soft-delete should replace the lost safety net (see §7 soft-delete row) |
 
 #### Card Detail View
 
@@ -169,7 +169,7 @@ Drag-and-drop must not be the only way to select or move a card — this is requ
 | ⌘N | New card (focused list, else first list of active board) |
 | ⇧⌘N | New board |
 | ⌥⌘N | New list |
-| ⌘⌫ | Delete selected card (no dialog; undoable) |
+| ⌘⌫ | Delete selected card (no dialog; not undoable since M-E — see §4.7) |
 | ⌘O | Open selected card's detail |
 | ⌘⏎ / Esc | Save & close card detail / cancel-close |
 | ⌘Z / ⇧⌘Z | Undo / Redo |
@@ -229,11 +229,11 @@ Local-first storage without an export path is exactly the lock-in this app exist
 
 ### 4.7 Undo & Redo
 
-All mutating operations — create/rename/move/reorder of boards, lists, and cards; list and card deletes; label toggles; due-date edits — are undoable, backed by the standard `UndoManager` and exposed through the standard Edit menu and ⌘Z/⇧⌘Z. The sole exception is **board deletion**, which is confirmation-gated and not undoable (see U-01 and B-02); board *creation* undo is unaffected and works normally.
+All mutating operations — create/rename/move/reorder of boards, lists, and cards; label toggles; due-date edits — are undoable, backed by the standard `UndoManager` and exposed through the standard Edit menu and ⌘Z/⇧⌘Z. The exceptions are **all three delete operations — board, list, and card deletion**, none of which is undoable: board deletion because an on-disk Board delete's undo snapshotting fatally asserts (see B-02), and list/card deletion since **M-E** because the same class of fatal assert reproduces one cascade level shallower once a card carries checklist items (the `ChecklistUndoOnDiskTests` spike, Task 0 of the M-E plan; see §4.3 C-05, §4.2 L-02). Any delete — board, list, or card — **clears the undo stack outright**, since earlier registered groups may reference the now-deleted rows. Board/card *creation* undo is unaffected and works normally.
 
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
-| U-01 | Undo/redo for all mutations | P0 | `UndoManager`-backed (NSUndoManager); standard Edit menu items; ⌘Z / ⇧⌘Z. Session undo history holds at least 50 steps (see §10, N-04). Card delete (C-05) relies on this in place of a confirmation dialog. **Board deletion is the one exception** — confirmation-gated and not undoable, because SwiftData's undo snapshotting of an on-disk Board delete fatally asserts (crash-forced platform limitation; see B-02 and §7 roadmap). All other board mutations, including board *creation*, remain undoable |
+| U-01 | Undo/redo for all mutations | P0 | `UndoManager`-backed (NSUndoManager); standard Edit menu items; ⌘Z / ⇧⌘Z. Session undo history holds at least 50 steps (see §10, N-04). **All three deletes — board (B-02), list (L-02), and card (C-05) — are excluded and not undoable**: board deletion because SwiftData's undo snapshotting of an on-disk Board delete fatally asserts (crash-forced platform limitation; see B-02 and §7 roadmap), and list/card deletion since M-E because the identical fatal-assert class reproduces one cascade level shallower once checklist items exist (`ChecklistUndoOnDiskTests`, M-E Task 0). Each delete clears the undo stack outright. All other board/list/card mutations, including creation, remain undoable |
 
 **MVP Scope:** U-01
 
@@ -323,7 +323,7 @@ Sibling order — lists within a board, cards within a list — is a contiguous 
 | Card | Removes its Label associations (nullify); Labels are untouched |
 | Label | Removes the association from any Cards that had it (nullify); Cards are untouched |
 
-All of the above are undoable (see §4.7, U-01), **except board deletion**, which is confirmation-gated and not undoable (a SwiftData platform limitation — undo snapshotting of an on-disk Board delete fatally asserts). Board and List deletes both require a confirmation dialog before the delete is committed (see B-02, L-02); the List delete is undoable, the Board delete is not. Card delete has no confirmation dialog — it relies on undo instead (see C-05).
+All of the above are undoable (see §4.7, U-01), **except all three deletes — Board, List, and Card** — none of which is undoable: Board deletion is a SwiftData platform limitation (undo snapshotting of an on-disk Board delete fatally asserts), and List/Card deletion joined it since **M-E**, once cards carry checklist items (the same fatal-assert class reproduces one cascade level shallower — see the `ChecklistUndoOnDiskTests` spike). Board and List deletes both require a confirmation dialog before the delete is committed (see B-02, L-02); neither is undoable. Card delete has no confirmation dialog and, since M-E, is not undoable either — deletion is now permanent and the undo stack clears (see C-05).
 
 ### 6.4 Schema Versioning
 
@@ -385,7 +385,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 ### 9.2 Lists
 
 - **L-01 — Create list.** Given a board is open, when the user creates a new list with a name, then the list appears at the right edge of the board and persists after relaunch.
-- **L-02 — Rename/delete list.** Given an existing list, when the user renames it, then the new name is reflected immediately and after relaunch. Given a list (with or without cards), when the user deletes it, then a confirmation dialog appears; when confirmed, the list and its cards are removed, and the action is undoable via ⌘Z.
+- **L-02 — Rename/delete list.** Given an existing list, when the user renames it, then the new name is reflected immediately and after relaunch. Given a list (with or without cards), when the user deletes it, then a confirmation dialog appears; when confirmed, the list and its cards are removed immediately; ⌘Z does NOT restore them — deletion is permanent and the undo history is cleared (not undoable since M-E — see §4.7).
 - **L-03 — Reorder lists.** Given a board with lists A, B, C (in that order), when the user drags list C to the first position, then the board shows C, A, B, and the order persists after relaunch.
 
 ### 9.3 Cards
@@ -394,7 +394,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - **C-02 — Edit card title inline.** Given a card, when the user double-clicks its title, types a new value, and presses Return, then the new title is saved and persisted; pressing Esc instead discards the edit and restores the previous title.
 - **C-03 — Reorder cards within a list.** Given a list with cards X, Y, Z (in that order), when the user drags X to position 2, then the list shows Y, X, Z, and the order persists after relaunch.
 - **C-04 — Move cards between lists.** Given a board with lists A and B, when the user drags card X from A onto position 2 of B, then X appears at position 2 of B (and is removed from A), and the order persists after relaunch.
-- **C-05 — Delete card.** Given a selected card, when the user presses ⌘⌫, then the card is removed immediately with no confirmation dialog; when the user presses ⌘Z immediately afterward, then the card is restored to its exact prior list and position.
+- **C-05 — Delete card.** Given a selected card, when the user presses ⌘⌫, then the card is removed immediately with no confirmation dialog; ⌘Z does NOT restore it — deletion is permanent and the undo history is cleared (not undoable since M-E — see §4.7).
 - **C-06 — Title + description editing.** Given a card detail view, when the user edits the description (`details`) field and saves (⌘⏎), then the updated text (including line breaks) persists and is shown correctly on reopen and after relaunch.
 - **C-07 — Add labels.** Given a card detail view, when the user clicks a label swatch, then the label is applied to the card and shown on the card face; clicking the same swatch again removes it; multiple labels can be applied simultaneously.
 - **C-08 — Set due date.** Given a card detail view, when the user picks a date (no time), then the card's `dueDate` is stored as that date at local start-of-day with `includesTime == false`, and the due-date badge (D-02) reflects it immediately.
@@ -419,12 +419,12 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 
 ### 9.7 Undo/Redo
 
-- **U-01 — Undo/redo for all mutations.** Given any undoable mutating action (create/rename/move/reorder of a board, list, or card; list or card delete; label toggle; due-date edit), when the user presses ⌘Z, then that single action is fully reverted, including position/order; when the user then presses ⇧⌘Z, then the action is reapplied. This holds for at least 50 consecutive undoable actions in one session (see §10, N-04). **Board deletion is excluded** — it is confirmation-gated and not undoable (SwiftData platform limitation); undoing a board *creation* is supported and, after it, the app remains responsive.
+- **U-01 — Undo/redo for all mutations.** Given any undoable mutating action (create/rename/move/reorder of a board, list, or card; label toggle; due-date edit), when the user presses ⌘Z, then that single action is fully reverted, including position/order; when the user then presses ⇧⌘Z, then the action is reapplied. This holds for at least 50 consecutive undoable actions in one session (see §10, N-04). **Board, list, and card deletion are all excluded** — none is undoable (board: a SwiftData platform limitation; list/card: the same fatal-assert class since M-E, once cards carry checklist items — see §4.7), and each clears the undo stack outright; undoing a board/list/card *creation* is supported and, after it, the app remains responsive.
 
 ### 9.8 Testing Strategy & Definition of Done
 
 - **Unit tests (Swift Testing)** cover model/store logic in isolation: position/ordering invariants (contiguous `0..<n`, correct renumbering on insert/move/delete) for lists and cards; cascade-delete behavior (Board→BoardList→Card, Label nullify-on-delete in both directions); due-date normalization (`includesTime == false` → start-of-day) and urgency color derivation (D-03); idempotent label-palette seeding (LB-01); and undo/redo stack behavior (U-01), including redo-after-undo and history depth ≥ 50.
-- **XCUITest end-to-end tests** drive the full app for: board/list/card CRUD journeys; drag-and-drop (list reorder, card reorder, card move-between-lists); every shortcut in the §4.3 Keyboard Shortcuts table plus keyboard navigation (C-10/C-11); relaunch-persistence (perform mutations, terminate, relaunch, assert state matches); JSON export producing a well-formed, re-importable file; and delete-then-undo flows (card no-confirmation/undo, list confirm-then-undo; board delete is confirm-only and not undoable, with a post-delete responsiveness check, and undoing a board *create* is verified to leave the app responsive). **E-01's save-panel leg is manually verified, not XCUITest-driven** — the standard save panel presented by Export is a sandboxed, remote-hosted `NSSavePanel` that XCUITest cannot reliably automate (platform limitation, same class as the board-delete note above); export CONTENT correctness (a well-formed, re-importable JSON file matching the seeded fixture) is still fully automated via the sanctioned `--export-to` test-only launch hook, which writes, reads back, and decodes the export outside the save panel. **B-06's reorder-drag leg is manually verified, not XCUITest-driven** — dragging a sidebar board row goes through NSTableView's native row-reorder session, which neither XCUITest's gesture synthesis nor a CGEvent-posted drag (`.cghidEventTap`) can commit (platform limitation, same class as the E-01 save-panel note above; the underlying mechanism is uninstrumented). The filter-gate leg IS automated (`SidebarReorderUITests.testFilterDisablesReorder`, which only asserts absence of movement and so isn't exposed to this limitation), and the reorder logic itself is fully unit-covered (`Reordering`'s `.onMove`-convention overload; `BoardStore.moveBoards`, including undo/redo and position-gap self-healing); the drag is confirmed working via a documented 30-second manual procedure (see the B-06 design spec). **E-02's open-panel leg is manually verified, not XCUITest-driven** (2026-07-08, PASS) — the standard open panel presented by Import is a sandboxed, remote-hosted `NSOpenPanel`, the same class as the E-01 save-panel note above; import CONTENT correctness (round trip, replace, invalid-file rejection, and mode-dialog cancel) is still fully automated via the sanctioned `--import-from`/`--import-mode` test-only launch hooks, which decode and import outside the open panel (see the E-02 design spec for the manual procedure, which must open a window via ⌘N first — `open`-launched `--uitest` instances start windowless on this host).
+- **XCUITest end-to-end tests** drive the full app for: board/list/card CRUD journeys; drag-and-drop (list reorder, card reorder, card move-between-lists); every shortcut in the §4.3 Keyboard Shortcuts table plus keyboard navigation (C-10/C-11); relaunch-persistence (perform mutations, terminate, relaunch, assert state matches); JSON export producing a well-formed, re-importable file; and delete-permanence flows (card no-confirmation and not undoable since M-E; list confirm-then-not-undoable since M-E; board confirm-only and not undoable — all three clear the undo stack outright), with a post-delete responsiveness check, and undoing a board *create* is verified to leave the app responsive). **E-01's save-panel leg is manually verified, not XCUITest-driven** — the standard save panel presented by Export is a sandboxed, remote-hosted `NSSavePanel` that XCUITest cannot reliably automate (platform limitation, same class as the board-delete note above); export CONTENT correctness (a well-formed, re-importable JSON file matching the seeded fixture) is still fully automated via the sanctioned `--export-to` test-only launch hook, which writes, reads back, and decodes the export outside the save panel. **B-06's reorder-drag leg is manually verified, not XCUITest-driven** — dragging a sidebar board row goes through NSTableView's native row-reorder session, which neither XCUITest's gesture synthesis nor a CGEvent-posted drag (`.cghidEventTap`) can commit (platform limitation, same class as the E-01 save-panel note above; the underlying mechanism is uninstrumented). The filter-gate leg IS automated (`SidebarReorderUITests.testFilterDisablesReorder`, which only asserts absence of movement and so isn't exposed to this limitation), and the reorder logic itself is fully unit-covered (`Reordering`'s `.onMove`-convention overload; `BoardStore.moveBoards`, including undo/redo and position-gap self-healing); the drag is confirmed working via a documented 30-second manual procedure (see the B-06 design spec). **E-02's open-panel leg is manually verified, not XCUITest-driven** (2026-07-08, PASS) — the standard open panel presented by Import is a sandboxed, remote-hosted `NSOpenPanel`, the same class as the E-01 save-panel note above; import CONTENT correctness (round trip, replace, invalid-file rejection, and mode-dialog cancel) is still fully automated via the sanctioned `--import-from`/`--import-mode` test-only launch hooks, which decode and import outside the open panel (see the E-02 design spec for the manual procedure, which must open a window via ⌘N first — `open`-launched `--uitest` instances start windowless on this host).
 - **Definition of Done** for MVP scope: every P0 acceptance criterion in §9.1–9.7 passes, and both the unit and XCUITest suites are green when run headlessly via `xcodebuild` (see A-07).
 
 ---
@@ -449,13 +449,13 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - B-02 Rename/delete board (confirm; delete not undoable — see §4.7)
 - B-03 Board sidebar (collapsible, searchable, persists; empty-state onboarding)
 - L-01 Create list
-- L-02 Rename/delete list (confirm; undoable)
+- L-02 Rename/delete list (confirm; not undoable — see §4.7)
 - L-03 Reorder lists (drag-and-drop)
 - C-01 Create card (inline, "+ Add card" row)
 - C-02 Edit card title inline
 - C-03 Reorder cards within a list
 - C-04 Move cards between lists
-- C-05 Delete card (no confirmation; undoable)
+- C-05 Delete card (no confirmation; not undoable — see §4.7)
 - C-06 Card title + description editing
 - C-07 Add label(s) to card
 - C-08 Set due date (date-only)

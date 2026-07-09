@@ -185,7 +185,7 @@ struct ListBoardView: View {
     }
 
     /// Row context-menu delete: nil the selection FIRST if it's the deleted card (the CardView
-    /// discipline), then one undoable store call.
+    /// discipline), then one store call — NOT undoable since M-E (see BoardStore.deleteCard).
     private func deleteCard(_ card: Card) {
         if selectedCardID == card.id { selectedCardID = nil }
         store.deleteCard(card)

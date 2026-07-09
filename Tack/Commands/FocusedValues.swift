@@ -20,7 +20,8 @@ struct BoardActions {
     let canCreateCard: Bool
     /// Opens the inline add-list editor (ghost column) on the active board.
     let newList: () -> Void
-    /// Deletes the selected card with no dialog (undoable). No-op when nothing is selected.
+    /// Deletes the selected card with no dialog (NOT undoable since M-E — see
+    /// `BoardStore.deleteCard`). No-op when nothing is selected.
     let deleteSelectedCard: () -> Void
     /// Opens the card-detail sheet for the selected card (Card ▸ "Open Card" / ⌘O). No-op when
     /// nothing is selected.

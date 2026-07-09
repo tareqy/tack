@@ -3,25 +3,21 @@ import Foundation
 import SwiftData
 @testable import Tack
 
-/// M-E SPIKE (Task 0) — the evidence that decides whether deleteCard/deleteList STAY undoable now
-/// that they cascade through a third graph level (ChecklistItem). Two prior findings frame the
-/// risk: the on-disk Board delete fatally asserts inside SwiftData's undo snapshotting
-/// (BoardStore.deleteBoard's evidence block), and the import spike's redo silently dropped every
-/// third-level Card insert of a multi-board graph (see ImportUndoOnDiskTests). Leg B here probes
-/// the exact same depth one relationship over: list → cards → checklist items.
+/// M-E on-disk smoke — the reduced form of the plan's spike suite. THE SPIKE GATE RESOLVED (RED)
+/// ON-DISK during Task 0: both `deleteCard` and `deleteList`, run 3/3 times against a real sqlite
+/// store, crashed immediately inside their own `withUndoGroup` — before `undo()` was ever called —
+/// with `SwiftData/ModelSnapshot.swift:46: Fatal error: Unexpected backing data for snapshot
+/// creation: SwiftData._FullFutureBackingData<Tack.ChecklistItem>` (leg A) / `<...Tack.Card>` or
+/// `<...Tack.ChecklistItem>` (leg B) — the same crash class and file/line as `BoardStore.deleteBoard`'s
+/// documented on-disk fatal assert, reproduced one cascade level shallower now that a card carries
+/// checklist items. deleteCard/deleteList therefore ship NON-undoable via the deleteBoard detach
+/// pattern (see the M-E plan's ledger block, `docs/superpowers/plans/2026-07-09-checklists.md`).
 ///
-/// ORACLES: exact fetchCounts + exact text/isDone/position arrays + persistentModelID row
-/// identity. NEVER ObjectIdentifier (instances refault across saves — the import spike's
-/// ObjectIdentifier verdicts varied run-to-run) and never bare "didn't crash" (the known failure
-/// mode is SILENT row loss, not a crash).
-///
-/// VERDICT PROTOCOL (the plan's Task 0): run this suite 3×. GREEN = all assertions, 3/3 runs →
-/// deleteCard/deleteList keep withUndoGroup (Task 1a; this file stays verbatim as the regression
-/// sentinel). RED = any crash / hang (>6 min) / failed assertion in any run → both adopt
-/// deleteBoard's detach-and-clear discipline (Task 1b; this file is rewritten into the reduced
-/// on-disk smoke form, exactly how ImportUndoOnDiskTests ships).
+/// What this suite still pins, on a REAL sqlite store: both deletes cascade completely (no
+/// orphaned checklist rows), renumber survivors, complete the detach discipline (manager
+/// reattached, stack clear, no assert/hang), and persist — the ImportUndoOnDiskTests posture.
 @MainActor
-@Suite("Checklist cascade-undo on-disk spike", .serialized)
+@Suite("Checklist cascade-delete on-disk smoke", .serialized)
 struct ChecklistUndoOnDiskTests {
 
     /// On-disk equivalent of `TestContainer(withUndo: true)` — copied verbatim from
@@ -80,81 +76,50 @@ struct ChecklistUndoOnDiskTests {
         return (toDo, target)
     }
 
-    /// The integrity oracle shared by both legs' "restored" checkpoints.
-    private func assertTargetFullyRestored(_ env: OnDiskStore, in list: BoardList,
-                                           expectedPersistentID: PersistentIdentifier) throws {
-        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 2)
-        #expect(try env.context.fetchCount(FetchDescriptor<ChecklistItem>()) == 3,
-                "the known failure mode is SILENT third-level row loss — count is the primary oracle")
-        let restored = try #require(list.sortedCards.first { $0.title == "Target" })
-        #expect(restored.persistentModelID == expectedPersistentID,
-                "undo must restore the row, not fabricate a lookalike")
-        let items = restored.sortedChecklistItems
-        #expect(items.map(\.text) == Self.itemTexts)
-        #expect(items.map(\.isDone) == [true, false, false])
-        #expect(items.map(\.position) == [0, 1, 2])
-    }
-
-    @Test("leg A: deleteCard of a checklist-bearing card — undo → redo → undo, full third-level integrity")
-    func deleteCardUndoRedoIntegrity() throws {
+    @Test("on-disk deleteCard: full cascade, survivors renumbered, detach discipline clean")
+    func onDiskDeleteCardSmoke() throws {
         let env = try OnDiskStore()
         defer { env.tearDown() }
         let (toDo, target) = try seed(env)
-        let targetPersistentID = target.persistentModelID
+        _ = env.store.addCard(to: toDo, title: "Tail") // a pre-delete group that must be CLEARED
+        // Hold a real undoable group on the stack to prove the delete clears it.
+        #expect(env.undoManager.canUndo == true)
 
         env.store.deleteCard(target)
-        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 1)
+
+        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 2)
         #expect(try env.context.fetchCount(FetchDescriptor<ChecklistItem>()) == 0,
                 "cascade must not leave orphaned checklist rows")
-        #expect(toDo.sortedCards.map(\.title) == ["Survivor"], "survivors renumbered")
-
-        // Undo: the risky transition — re-INSERT of the card plus its third-level items.
-        env.undoManager.undo()
-        try assertTargetFullyRestored(env, in: toDo, expectedPersistentID: targetPersistentID)
-
-        // Redo: re-delete. Must be clean AND complete (no orphans, no crash).
-        env.undoManager.redo()
-        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 1)
-        #expect(try env.context.fetchCount(FetchDescriptor<ChecklistItem>()) == 0)
-
-        // Undo again: the cycle must keep restoring the SAME rows indefinitely.
-        env.undoManager.undo()
-        try assertTargetFullyRestored(env, in: toDo, expectedPersistentID: targetPersistentID)
+        #expect(toDo.sortedCards.map(\.title) == ["Survivor", "Tail"])
+        #expect(toDo.sortedCards.map(\.position) == [0, 1], "survivors renumbered")
+        // Detach discipline completed: manager reattached, stack clear, no assert/hang.
+        #expect(env.context.undoManager === env.undoManager)
+        #expect(env.undoManager.canUndo == false)
+        #expect(env.undoManager.canRedo == false)
+        // Persisted: a second context on the same container sees the post-delete truth.
+        let fresh = ModelContext(env.container)
+        #expect(try fresh.fetchCount(FetchDescriptor<ChecklistItem>()) == 0)
+        #expect(try fresh.fetchCount(FetchDescriptor<Card>()) == 2)
     }
 
-    @Test("leg B: deleteList cascading through cards to items — undo → redo → undo (the import-spike depth)")
-    func deleteListUndoRedoIntegrity() throws {
+    @Test("on-disk deleteList: cascade through cards to items, detach discipline clean")
+    func onDiskDeleteListSmoke() throws {
         let env = try OnDiskStore()
         defer { env.tearDown() }
-        let (toDo, target) = try seed(env)
-        let targetPersistentID = target.persistentModelID
-        let listPersistentID = toDo.persistentModelID
+        let (toDo, _) = try seed(env)
         let board = try #require(toDo.board)
 
         env.store.deleteList(toDo)
+
         #expect(try env.context.fetchCount(FetchDescriptor<BoardList>()) == 2)
         #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 0)
         #expect(try env.context.fetchCount(FetchDescriptor<ChecklistItem>()) == 0)
-        #expect(board.sortedLists.map(\.name) == ["In Progress", "Done"], "survivors renumbered")
-
-        // Undo: a THREE-level re-insert (list → 2 cards → 3 items) — exactly the depth at which
-        // the import spike silently lost rows.
-        env.undoManager.undo()
-        #expect(try env.context.fetchCount(FetchDescriptor<BoardList>()) == 3)
-        let restoredList = try #require(board.sortedLists.first { $0.name == "To Do" })
-        #expect(restoredList.persistentModelID == listPersistentID)
-        #expect(board.sortedLists.map(\.name) == ["To Do", "In Progress", "Done"],
-                "original list positions restored")
-        try assertTargetFullyRestored(env, in: restoredList, expectedPersistentID: targetPersistentID)
-
-        env.undoManager.redo()
-        #expect(try env.context.fetchCount(FetchDescriptor<BoardList>()) == 2)
-        #expect(try env.context.fetchCount(FetchDescriptor<Card>()) == 0)
-        #expect(try env.context.fetchCount(FetchDescriptor<ChecklistItem>()) == 0)
-
-        env.undoManager.undo()
-        #expect(try env.context.fetchCount(FetchDescriptor<BoardList>()) == 3)
-        let restoredAgain = try #require(board.sortedLists.first { $0.name == "To Do" })
-        try assertTargetFullyRestored(env, in: restoredAgain, expectedPersistentID: targetPersistentID)
+        #expect(board.sortedLists.map(\.name) == ["In Progress", "Done"])
+        #expect(board.sortedLists.map(\.position) == [0, 1])
+        #expect(env.context.undoManager === env.undoManager)
+        #expect(env.undoManager.canUndo == false)
+        #expect(env.undoManager.canRedo == false)
+        let fresh = ModelContext(env.container)
+        #expect(try fresh.fetchCount(FetchDescriptor<BoardList>()) == 2)
     }
 }

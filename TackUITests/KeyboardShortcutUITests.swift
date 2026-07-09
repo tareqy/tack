@@ -175,7 +175,7 @@ final class KeyboardShortcutUITests: TackUITestCase {
 
     // MARK: - Delete + Undo / Redo
 
-    func testCmdDeleteThenUndoRedo() {
+    func testCmdDeleteIsImmediateAndNotUndoable() {
         launch(fixture: "standard")
 
         let book = anyCard("Book flights")
@@ -189,24 +189,17 @@ final class KeyboardShortcutUITests: TackUITestCase {
         XCTAssertFalse(app.sheets.firstMatch.exists, "delete must not present a sheet")
         XCTAssertFalse(app.windows.buttons["Cancel"].exists, "delete must not present a confirmation dialog")
 
-        // Edit ▸ Undo is enabled after the delete (SwiftUI's built-in Undo item is titled plain
-        // "Undo" — it surfaces canUndo, not the NSUndoManager action name; the wiring itself is
-        // verified by the ⌘Z restore below).
+        // M-E: card delete is NOT undoable (spike-forced, the deleteBoard discipline — see
+        // BoardStore.deleteCard). The delete must clear the undo stack outright.
         openMenu("Edit")
         let undo = menuItem("Undo")
         XCTAssertTrue(undo.waitForExistence(timeout: timeout), "Edit ▸ Undo should exist")
-        XCTAssertTrue(undo.isEnabled, "Undo should be enabled after a delete")
+        XCTAssertFalse(undo.isEnabled, "Undo must be DISABLED after a card delete (stack cleared)")
         closeMenu()
 
         app.typeKey("z", modifierFlags: .command)
-        XCTAssertTrue(poll(timeout: timeout) { self.anyCard("Book flights").exists },
-                      "⌘Z should restore the deleted card")
-        XCTAssertEqual(cardIdentifiersByPosition(under: list("Done")), [AccessibilityID.card("Book flights")],
-                       "restored card should be back at its original position in Done")
-
-        app.typeKey("z", modifierFlags: [.command, .shift])
-        XCTAssertTrue(poll(timeout: timeout) { !self.anyCard("Book flights").exists },
-                      "⇧⌘Z should redo the delete")
+        XCTAssertFalse(anyCard("Book flights").waitForExistence(timeout: 3),
+                       "⌘Z after a card delete must do nothing — the card stays deleted")
     }
 
     /// M7 hardening: a mutating card command (⌘⌫) must NOT fire while an inline editor holds

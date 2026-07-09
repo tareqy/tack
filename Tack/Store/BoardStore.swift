@@ -143,8 +143,11 @@ final class BoardStore {
     /// same populated depth that the list-delete case survives; the deeper cause is unproven.
     /// `groupsByEvent` true vs false makes no difference (the crash is in snapshot creation, not
     /// grouping), and in-memory unit stores never hit it — which is why the M1 suite stayed green
-    /// while every real-app board delete died. `deleteList` and `deleteCard` are empirically green
-    /// with the manager attached and keep their original undo-grouped form.
+    /// while every real-app board delete died. `deleteList` and `deleteCard` WERE empirically green
+    /// with the manager attached and originally kept their own undo-grouped form — until M-E added
+    /// a third cascade level (ChecklistItem) and reproduced this exact crash class one level
+    /// shallower (see `deleteCard`'s/`deleteList`'s own doc comments); both now use this method's
+    /// detach-and-clear discipline too.
     ///
     /// The mitigation is shape-independent: detaching the manager prevents the crashing snapshot
     /// from being created at all. Clearing the stack afterwards is a safety requirement, not a
@@ -152,7 +155,8 @@ final class BoardStore {
     /// references to the now-deleted objects, and undoing them after the delete would mutate
     /// deleted rows. Losing undo history on a board delete is acceptable UX — the operation is
     /// already confirmation-gated in SidebarView, and the PRD's undo story centres on card
-    /// operations, which remain fully undoable.
+    /// operations, most of which remain fully undoable (edit, move, label toggle, due date) —
+    /// card delete itself joined this detach-and-clear discipline since M-E (see `deleteCard`).
     func deleteBoard(_ board: Board) {
         let held = context.undoManager
         context.undoManager = nil
@@ -211,17 +215,30 @@ final class BoardStore {
         }
     }
 
-    /// Renumbers survivors to 0..<n.
+    /// Renumbers survivors to 0..<n. NOT undoable since M-E — the checklist spike
+    /// (ChecklistUndoOnDiskTests, Task 0 ledger in the M-E plan) showed SwiftData's undo of this
+    /// delete's now-three-level cascade (list → card → checklist items) violating integrity
+    /// on-disk: `SwiftData/ModelSnapshot.swift:46: Fatal error: Unexpected backing data for
+    /// snapshot creation` (`Tack.Card`/`Tack.ChecklistItem`), fired inside `withUndoGroup` itself,
+    /// 3/3 runs, before `undo()` was ever called. Mitigation is deleteBoard's shape-independent
+    /// detach-and-clear, verbatim: manager detached for the span (the crashing registration is
+    /// never created), stack cleared in the defer (earlier groups reference the deleted rows —
+    /// undoing them post-delete would mutate dead objects). PRD L-02/U-01 amended accordingly.
+    /// Don't "fix" this by restoring withUndoGroup.
     func deleteList(_ list: BoardList) {
-        withUndoGroup("Delete List") {
-            // Compute survivors BEFORE deleting: `board.lists` does not drop the
-            // deleted object until the context is saved, so reading it afterwards
-            // would renumber against a stale (still-includes-the-deleted-list) array.
-            let survivors = list.board?.sortedLists.filter { $0.id != list.id } ?? []
-            context.delete(list)
-            renumber(survivors)
-            save()
+        let held = context.undoManager
+        context.undoManager = nil
+        defer {
+            context.undoManager = held
+            held?.removeAllActions()
         }
+        // Compute survivors BEFORE deleting: `board.lists` does not drop the
+        // deleted object until the context is saved, so reading it afterwards
+        // would renumber against a stale (still-includes-the-deleted-list) array.
+        let survivors = list.board?.sortedLists.filter { $0.id != list.id } ?? []
+        context.delete(list)
+        renumber(survivors)
+        save()
     }
 
     /// Reorders `list` within its board so it ends up at `index`; renumbers all
@@ -272,17 +289,29 @@ final class BoardStore {
         }
     }
 
-    /// Renumbers survivors to 0..<n.
+    /// Renumbers survivors to 0..<n. NOT undoable since M-E — the checklist spike
+    /// (ChecklistUndoOnDiskTests, Task 0 ledger in the M-E plan) showed SwiftData's undo of this
+    /// delete's now-three-level cascade (card → checklist items) violating integrity on-disk:
+    /// `SwiftData/ModelSnapshot.swift:46: Fatal error: Unexpected backing data for snapshot
+    /// creation` (`Tack.ChecklistItem`), fired inside `withUndoGroup` itself, 3/3 runs, before
+    /// `undo()` was ever called. Mitigation is deleteBoard's shape-independent detach-and-clear,
+    /// verbatim: manager detached for the span (the crashing registration is never created),
+    /// stack cleared in the defer (earlier groups reference the deleted rows — undoing them
+    /// post-delete would mutate dead objects). PRD C-05/U-01 amended accordingly. Don't "fix"
+    /// this by restoring withUndoGroup.
     func deleteCard(_ card: Card) {
-        withUndoGroup("Delete Card") {
-            // Compute survivors BEFORE deleting: `list.cards` does not drop the
-            // deleted object until the context is saved, so reading it afterwards
-            // would renumber against a stale (still-includes-the-deleted-card) array.
-            let survivors = card.list?.sortedCards.filter { $0.id != card.id } ?? []
-            context.delete(card)
-            renumber(survivors)
-            save()
+        let held = context.undoManager
+        context.undoManager = nil
+        defer {
+            context.undoManager = held
+            held?.removeAllActions()
         }
+        // Compute survivors BEFORE deleting: `list.cards` does not drop the deleted object
+        // until the context is saved (unchanged from the undoable-era comment).
+        let survivors = card.list?.sortedCards.filter { $0.id != card.id } ?? []
+        context.delete(card)
+        renumber(survivors)
+        save()
     }
 
     /// Works for same-list reorder AND cross-list move; renumbers all affected

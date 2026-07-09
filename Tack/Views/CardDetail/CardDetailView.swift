@@ -101,7 +101,8 @@ struct CardDetailView: View {
 
     private var footer: some View {
         HStack {
-            // No confirmation (PRD v1.1 C-05, same as the card row's context-menu delete).
+            // No confirmation (PRD C-05, same as the card row's context-menu delete;
+            // NOT undoable since M-E — see BoardStore.deleteCard).
             Button("Delete Card", role: .destructive) {
                 onDelete()
             }

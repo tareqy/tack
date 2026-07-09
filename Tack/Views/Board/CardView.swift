@@ -196,7 +196,8 @@ struct CardView: View {
             }
         }
 
-        // No confirmation (PRD v1.1 C-05: undoable via the store, Finder ⌘⌫ pattern).
+        // No confirmation (PRD C-05, amended M-E: NOT undoable since M-E — see
+        // BoardStore.deleteCard — Finder ⌘⌫ pattern).
         Button("Delete Card", role: .destructive) {
             if isSelected { selectedCardID = nil }
             store.deleteCard(card)

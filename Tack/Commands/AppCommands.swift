@@ -55,7 +55,8 @@ struct AppCommands: Commands {
             Divider()
         }
 
-        // MARK: Edit — Delete Card (no dialog, undoable). System Undo/Redo are left untouched.
+        // MARK: Edit — Delete Card (no dialog; NOT undoable since M-E — see
+        // BoardStore.deleteCard). System Undo/Redo are left untouched.
         CommandGroup(after: .pasteboard) {
             Button("Delete Card") { guardedMutation { boardActions?.deleteSelectedCard() } }
                 .keyboardShortcut(.delete, modifiers: .command)
