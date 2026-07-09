@@ -146,7 +146,7 @@ When a card is clicked, it opens an expanded detail view (modal or side panel).
 |---|---------|----------|-------|
 | C-06 | Title + description editing | P0 | Rich text not required for MVP — plain text with line breaks. Stored in the schema as `details` (see §6) |
 | C-07 | Add label(s) to card (see §4.4) | P0 | Fixed palette of 8 colors; click to add, click again to remove; multi-label support |
-| C-08 | Set due date (see §4.5) | P0 | Date picker, **date-only** in the MVP UI (no time-of-day) — see §4.5 for the overdue definition. Schema carries an `includesTime` flag so optional time can land post-MVP without a migration (see §6, §7) |
+| C-08 | Set due date (see §4.5) | P0 | Date picker, **date-only by default** — see §4.5 for the overdue definition. Optional time-of-day + duration **shipped post-MVP (M-B)**; schema carries `includesTime`/`durationMinutes` (see §6, §7) |
 | C-09 | Activity log — who created/moved/edited the card | P1 | Post-MVP if time permits; single-user edit history, independent of multi-user collaboration (see §7) |
 
 #### Keyboard Navigation & Movement
@@ -201,11 +201,11 @@ Labels provide visual categorization of cards without disrupting the board layou
 
 Due dates add time-awareness to cards, with native macOS integration.
 
-MVP due dates are **date-only** (no time-of-day). A card is **overdue** when its `dueDate` is earlier than the start of today in the user's local time zone; this is evaluated at render/read time and needs no background job. The schema stores an `includesTime` flag (default `false`) alongside `dueDate` so optional time-of-day can be added post-MVP without a data migration (see §6, §7).
+Due dates are **date-only by default** (no time-of-day). Optional time-of-day + a duration **shipped post-MVP (M-B)**. A date-only card is **overdue** when its `dueDate` is earlier than the start of today in the user's local time zone (unchanged since MVP — i.e. it goes overdue at the end of its due day). A timed card (`includesTime == true`) is **overdue** strictly past `dueDate + durationMinutes` (duration is optional; `nil` or non-positive is treated as `0`, so a bare point-in-time due goes overdue the instant it passes) — short of that, it falls back to the same day-based bucketing as a date-only card (a still-upcoming slot later today reads as "due today", not some intermediate state). Both are evaluated at render/read time and need no background job. The "Today"/"Tomorrow"/"Next Week" quick options (D-01) remain date-only and reset any staged time-of-day/duration back to none. The schema stores `includesTime` (default `false`) and an optional `durationMinutes` alongside `dueDate` so both could be added without a data migration (see §6, §7).
 
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
-| D-01 | Set due date on card (date only) | P0 | Date picker in card detail view; "Today", "Tomorrow", "Next Week" quick options; stored as start-of-day local time with `includesTime == false` |
+| D-01 | Set due date on card (date-only by default) | P0 | Date picker in card detail view; "Today", "Tomorrow", "Next Week" quick options (always date-only; reset any staged time-of-day/duration); stored as start-of-day local time with `includesTime == false`. Optional time-of-day + duration **shipped post-MVP (M-B)** — see §4.5 |
 | D-02 | Show due date badge on card | P0 | Visual indicator directly on the card surface (no need to open detail); cards with **no due date show no badge at all** |
 | D-03 | Color-code by urgency | P0 | For cards that have a due date: Overdue = **red**, Due today = **orange**, Due tomorrow = **amber**, Due later than tomorrow = neutral **gray** (not green — green reads as "done", and the app has no explicit done/complete state in MVP). Cards with no due date show no badge (see D-02) |
 | D-04 | Sync due dates → Apple Reminders | P2 | Post-MVP/roadmap. Uses the **EventKit** framework (`EKReminder`); requires `NSRemindersUsageDescription` in `Info.plist` and Reminders access authorization/entitlement |
@@ -221,7 +221,7 @@ Local-first storage without an export path is exactly the lock-in this app exist
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
 | E-01 | Export all boards to a JSON file | P0 | Standard macOS save panel (sandbox-compatible via user-selected file write, e.g. `fileExporter`/`NSSavePanel`); exports the full board/list/card/label graph |
-| E-02 | Backup/restore — import a previously exported JSON file | P1 | Shipped post-MVP. Two modes chosen via a dialog after the file is picked and decoded: **Add to Existing** (appends after current boards) and **Replace All Boards** (deletes existing boards first; unavailable for zero-board backups). ⇧⌘I / File menu. Malformed JSON, missing required fields, or a `formatVersion` outside `1...current` hard-reject the whole file (the gate is tolerant of older versions since v2/M-A: old files decode with missing optional fields as nil; files from NEWER app versions are rejected) — nothing imported, user-visible error; everything else decodable is sanitized quietly (unknown label names dropped, `dueDate` re-normalized to local start-of-day when time-of-day isn't included, `customThemeHex` canonicalized-or-nil). **Neither mode is undoable** — per the recorded in-memory undo spike (multi-board-graph undo/redo silently dropped 3rd-level Card inserts on redo), both Add to Existing and Replace All detach the undo manager and clear the undo stack, exactly like board delete (see §4.7, U-01); ⌘Z after an import does nothing. Export/Import menu items gray out while a text editor has focus, matching the other editing commands' enablement |
+| E-02 | Backup/restore — import a previously exported JSON file | P1 | Shipped post-MVP. Two modes chosen via a dialog after the file is picked and decoded: **Add to Existing** (appends after current boards) and **Replace All Boards** (deletes existing boards first; unavailable for zero-board backups). ⇧⌘I / File menu. Malformed JSON, missing required fields, or a `formatVersion` outside `1...current` hard-reject the whole file (the gate is tolerant of older versions since v2/M-A: old files decode with missing optional fields as nil; files from NEWER app versions are rejected) — nothing imported, user-visible error; everything else decodable is sanitized quietly (unknown label names dropped, `dueDate` re-normalized to local start-of-day when time-of-day isn't included, `durationMinutes` nilled when date-only or non-positive, `customThemeHex` canonicalized-or-nil). **Neither mode is undoable** — per the recorded in-memory undo spike (multi-board-graph undo/redo silently dropped 3rd-level Card inserts on redo), both Add to Existing and Replace All detach the undo manager and clear the undo stack, exactly like board delete (see §4.7, U-01); ⌘Z after an import does nothing. Export/Import menu items gray out while a text editor has focus, matching the other editing commands' enablement |
 
 **MVP Scope:** E-01 (E-02 shipped post-MVP, see above)
 
@@ -297,8 +297,9 @@ All mutating operations — create/rename/move/reorder of boards, lists, and car
 - `title`: String
 - `details`: String? (optional — this is the PRD's "description" field; named `details` in the schema)
 - `position`: Int
-- `dueDate`: Date? (optional; when `includesTime == false`, stored normalized to start-of-day in the local time zone at the moment it is set)
-- `includesTime`: Bool (default `false`; reserved for post-MVP optional time-of-day — see §4.5, §7)
+- `dueDate`: Date? (optional; when `includesTime == false`, stored normalized to start-of-day in the local time zone at the moment it is set; when `includesTime == true`, stores the raw wall-clock slot start)
+- `includesTime`: Bool (default `false`; user-settable as of **M-B** — see §4.5, §7)
+- `durationMinutes`: Int? (optional; only meaningful when `includesTime == true`; nilled when date-only or non-positive — see §4.5, §7)
 - `createdAt`: Date
 - `updatedAt`: Date
 - `labels`: [Label] — many-to-many; **nullify on delete** in both directions (deleting a Label removes it from any cards without deleting the cards; deleting a Card removes its label associations without deleting Labels)
@@ -347,7 +348,7 @@ These are explicitly deferred beyond the MVP, with an indicative roadmap priorit
 | Apple Watch companion | P2 | Small screen doesn't suit Kanban well |
 | Custom-theme dark/light contrast audit & accessibility polish | P1 | Baseline dark/light mode adaptation ships in MVP for free via SwiftUI; deeper contrast auditing for *custom* board themes (B-04) is deferred |
 | Cloud sync | P2 | Local-first means data lives on disk; multi-device sync needs backend infrastructure |
-| Optional due-date time-of-day | P1 | Schema carries an `includesTime` flag (default `false`) from v1 so this lands without a migration (§4.5, §6) |
+| Optional due-date time-of-day | P1 | **Shipped post-MVP (M-B)** — see §4.5. Schema carried an `includesTime` flag (default `false`) from v1 so this landed without a migration; `durationMinutes` was added as an additive optional field (§6) |
 | Search across all boards (Spotlight integration) | P2 | Useful, but deferred to roadmap (§1) |
 | Apple Reminders sync (EventKit) | P2 | Deferred to roadmap (§1); see D-04 |
 | Trello import (from Trello's JSON export) | P1 | Feasible from Trello's own data export format; table stakes for Trello refugees switching over |
@@ -475,7 +476,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - C-09 Card activity log
 - LB-03 Search/filter by label (⌘F)
 - E-02 Backup/restore — import exported JSON (shipped post-MVP; Add to Existing / Replace All, neither undoable — see §4.6)
-- Optional due-date time-of-day (`includesTime`)
+- Optional due-date time-of-day (shipped post-MVP; `includesTime`/`durationMinutes` — see §4.5)
 - Custom-theme dark/light contrast audit & accessibility polish
 - Trello import (from Trello's JSON export)
 
