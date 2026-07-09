@@ -13,6 +13,28 @@ private protocol PositionedEntity: AnyObject {
 extension Board: PositionedEntity {}
 extension BoardList: PositionedEntity {}
 extension Card: PositionedEntity {}
+extension ChecklistItem: PositionedEntity {}
+
+/// M-E: one staged checklist row of the card-detail sheet — a plain value the view stages and
+/// `applyCardEdits` diffs against the persisted rows. `id` is the persisted `ChecklistItem.id`
+/// when the draft mirrors an existing row; nil marks a row added in the sheet this session
+/// (=> insert). Deliberately NOT Identifiable: two new rows both carry nil, so SwiftUI row
+/// identity comes from the ForEach INDEX at the view site — stable, because v1 has no reorder UI.
+struct ChecklistDraft: Equatable {
+    var id: UUID?
+    var text: String
+    var isDone: Bool
+}
+
+extension ChecklistDraft {
+    /// The card's persisted checklist as drafts, in position order — the seed for
+    /// `CardDetailView`'s staged @State and the identity payload for call sites that don't edit
+    /// the checklist (an identity array diffs to "no change").
+    @MainActor
+    static func drafts(of card: Card) -> [ChecklistDraft] {
+        card.sortedChecklistItems.map { ChecklistDraft(id: $0.id, text: $0.text, isDone: $0.isDone) }
+    }
+}
 
 /// The ONLY mutation surface for the Tack model graph. Every method performs its
 /// writes, saves the context, and wraps itself in a single undo group so it is exactly
@@ -379,8 +401,18 @@ final class BoardStore {
     /// NOT defaulted — a defaulted `includesTime: false` here would let any unrelated edit (a title
     /// rename committed through the sheet) silently wipe a card's time slot, so every call site
     /// must state its time semantics explicitly.
+    ///
+    /// M-E: `checklist` is the sheet's staged Action Items, diffed against the persisted rows
+    /// inside the SAME "Edit Card" group (id-matched → in-place update; missing ids → deletes;
+    /// nil ids → inserts; positions renumbered 0..<n in draft order — insertion order IS the
+    /// order, v1 has no reorder UI). Whitespace-only drafts are dropped here, the save-time
+    /// backstop (the labels-filter posture: drop invalid, pass kept text through verbatim).
+    /// Deliberately NOT defaulted, same reason as `includesTime`: a defaulted `[]` means
+    /// "delete every item" under diff semantics, so any unrelated call site would silently
+    /// wipe the card's checklist.
     func applyCardEdits(_ card: Card, title: String, details: String?, labels: Set<LabelColor>,
-                        dueDate: Date?, includesTime: Bool, durationMinutes: Int?) {
+                        dueDate: Date?, includesTime: Bool, durationMinutes: Int?,
+                        checklist: [ChecklistDraft]) {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let newTitle = trimmedTitle.isEmpty ? card.title : trimmedTitle
         let normalizedIncludesTime = dueDate != nil && includesTime
@@ -395,8 +427,13 @@ final class BoardStore {
         let dueDateChanged = normalizedDueDate != card.dueDate
         let timeChanged = normalizedIncludesTime != card.includesTime || normalizedDuration != card.durationMinutes
         let labelsChanged = !labelsToAdd.isEmpty || !labelsToRemove.isEmpty
+        let keptDrafts = checklist.filter {
+            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let checklistChanged = keptDrafts != ChecklistDraft.drafts(of: card)
 
-        guard titleChanged || detailsChanged || dueDateChanged || timeChanged || labelsChanged else { return }
+        guard titleChanged || detailsChanged || dueDateChanged || timeChanged || labelsChanged
+                || checklistChanged else { return }
 
         withUndoGroup("Edit Card") {
             if titleChanged { card.title = newTitle }
@@ -420,6 +457,31 @@ final class BoardStore {
                         card.labels.remove(at: index)
                     }
                 }
+            }
+            if checklistChanged {
+                let existingByID = Dictionary(uniqueKeysWithValues: card.sortedChecklistItems.map { ($0.id, $0) })
+                let keptIDs = Set(keptDrafts.compactMap(\.id))
+                // Deletes are computed from the PRE-delete array (the deleteCard survivors
+                // precedent: relationship arrays don't drop deleted objects until save).
+                for item in card.sortedChecklistItems where !keptIDs.contains(item.id) {
+                    context.delete(item)
+                }
+                var finalItems: [ChecklistItem] = []
+                for draft in keptDrafts {
+                    if let id = draft.id, let item = existingByID[id] {
+                        if item.text != draft.text { item.text = draft.text }
+                        if item.isDone != draft.isDone { item.isDone = draft.isDone }
+                        finalItems.append(item)
+                    } else {
+                        // nil id (a sheet-added row) — or an id that no longer resolves (can't
+                        // happen single-user, but total behavior beats a trap): insert fresh.
+                        let item = ChecklistItem(text: draft.text, isDone: draft.isDone,
+                                                 position: finalItems.count, card: card)
+                        context.insert(item)
+                        finalItems.append(item)
+                    }
+                }
+                renumber(finalItems) // contiguous 0..<n in draft order — the shared invariant
             }
             card.updatedAt = .now
             save()

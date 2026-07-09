@@ -56,4 +56,36 @@ struct CascadeDeleteTests {
         let labels = try! env.context.fetch(FetchDescriptor<CardLabel>())
         #expect(labels.count == 8)
     }
+
+    @Test("deleteCard cascades to its checklist items (M-E)")
+    func deleteCardCascadesToChecklistItems() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "One", isDone: false),
+                                             ChecklistDraft(id: nil, text: "Two", isDone: true)])
+
+        env.store.deleteCard(card)
+
+        let items = (try? env.context.fetch(FetchDescriptor<ChecklistItem>())) ?? []
+        #expect(items.isEmpty, "no orphaned checklist rows after a card delete")
+    }
+
+    @Test("deleteList cascades through cards to checklist items (M-E)")
+    func deleteListCascadesThroughCardsToChecklistItems() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let list = board.sortedLists[0]
+        let card = env.store.addCard(to: list, title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "One", isDone: false)])
+
+        env.store.deleteList(list)
+
+        let items = (try? env.context.fetch(FetchDescriptor<ChecklistItem>())) ?? []
+        #expect(items.isEmpty, "no orphaned checklist rows after a list delete")
+    }
 }

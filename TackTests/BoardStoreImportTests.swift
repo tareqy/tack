@@ -238,7 +238,7 @@ struct BoardStoreImportTests {
         let cardOne = a.store.addCard(to: alphaLists[0], title: "Card One")
         a.store.applyCardEdits(cardOne, title: "Card One", details: "line1\nline2",
                                labels: [.red, .blue], dueDate: Date(timeIntervalSince1970: 1_781_800_000),
-                               includesTime: false, durationMinutes: nil)
+                               includesTime: false, durationMinutes: nil, checklist: [])
         let cardTwo = a.store.addCard(to: alphaLists[0], title: "Card Two")
         // M-B: a timed card with a duration — includesTime true skips startOfDay normalization,
         // so the raw whole-second epoch survives ISO-8601 byte-stably.

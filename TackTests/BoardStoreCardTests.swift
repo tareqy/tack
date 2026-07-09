@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftData
 @testable import Tack
 
 @MainActor
@@ -166,7 +167,8 @@ struct BoardStoreCardTests {
             labels: [.red],
             dueDate: card.dueDate,
             includesTime: false,
-            durationMinutes: nil
+            durationMinutes: nil,
+            checklist: []
         )
 
         #expect(card.updatedAt == originalUpdatedAt)
@@ -199,7 +201,8 @@ struct BoardStoreCardTests {
             labels: [],
             dueDate: dueDateWithTime,
             includesTime: false,
-            durationMinutes: nil
+            durationMinutes: nil,
+            checklist: []
         )
 
         #expect(card.title == "Renamed")
@@ -227,7 +230,8 @@ struct BoardStoreCardTests {
             labels: [.blue, .green], // drop red, keep blue, add green
             dueDate: card.dueDate,
             includesTime: false,
-            durationMinutes: nil
+            durationMinutes: nil,
+            checklist: []
         )
 
         #expect(Set(card.labels.map(\.colorName)) == ["blue", "green"])
@@ -249,7 +253,8 @@ struct BoardStoreCardTests {
             labels: [.blue],
             dueDate: .now,
             includesTime: false,
-            durationMinutes: nil
+            durationMinutes: nil,
+            checklist: []
         )
         #expect(card.title == "Renamed")
         #expect(card.details == "New details")
@@ -274,7 +279,7 @@ struct BoardStoreCardTests {
 
         Thread.sleep(forTimeInterval: 0.01)
         env.store.applyCardEdits(card, title: "   ", details: "Added details", labels: [], dueDate: nil,
-                                 includesTime: false, durationMinutes: nil)
+                                 includesTime: false, durationMinutes: nil, checklist: [])
 
         #expect(card.title == "Keep Me")
         // Other fields DID change, so the whole call still applies and still bumps updatedAt —
@@ -297,7 +302,7 @@ struct BoardStoreCardTests {
         let slotStart = Calendar.current.date(from: components)!
 
         env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
-                                 dueDate: slotStart, includesTime: true, durationMinutes: 90)
+                                 dueDate: slotStart, includesTime: true, durationMinutes: 90, checklist: [])
 
         #expect(card.dueDate == slotStart, "timed dates are NOT startOfDay-normalized")
         #expect(card.includesTime == true)
@@ -320,7 +325,7 @@ struct BoardStoreCardTests {
         // Same dueDate VALUE (already start-of-day) — dueDateChanged is false; timeChanged
         // alone must open the one "Edit Card" undo group.
         env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
-                                 dueDate: card.dueDate, includesTime: true, durationMinutes: nil)
+                                 dueDate: card.dueDate, includesTime: true, durationMinutes: nil, checklist: [])
 
         #expect(card.includesTime == true)
         #expect(env.undoManager?.canUndo == true, "a pure time toggle must register an undo step")
@@ -339,10 +344,154 @@ struct BoardStoreCardTests {
         // nil dueDate with stray time args is the picker's Clear shape — the normalization
         // (`dueDate != nil && includesTime`) must win over the leftover flags.
         env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
-                                 dueDate: nil, includesTime: true, durationMinutes: 60)
+                                 dueDate: nil, includesTime: true, durationMinutes: 60, checklist: [])
 
         #expect(card.dueDate == nil)
         #expect(card.includesTime == false)
         #expect(card.durationMinutes == nil)
+    }
+
+    // MARK: - applyCardEdits checklist (M-E)
+
+    private func drafts(_ card: Card) -> [ChecklistDraft] { ChecklistDraft.drafts(of: card) }
+
+    @Test("nil-id drafts insert in draft order with positions 0..<n")
+    func checklistInsertsInDraftOrder() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [
+                                     ChecklistDraft(id: nil, text: "One", isDone: false),
+                                     ChecklistDraft(id: nil, text: "Two", isDone: true),
+                                 ])
+
+        let items = card.sortedChecklistItems
+        #expect(items.map(\.text) == ["One", "Two"])
+        #expect(items.map(\.isDone) == [false, true])
+        #expect(items.map(\.position) == [0, 1])
+    }
+
+    @Test("id-matched drafts update text/isDone IN PLACE — same row, not delete+recreate")
+    func checklistUpdatesMatchByID() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "One", isDone: false)])
+        let originalPersistentID = card.sortedChecklistItems[0].persistentModelID
+
+        var edited = drafts(card)
+        edited[0].text = "One, renamed"
+        edited[0].isDone = true
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: edited)
+
+        let item = card.sortedChecklistItems[0]
+        #expect(item.text == "One, renamed")
+        #expect(item.isDone == true)
+        // persistentModelID, never ObjectIdentifier — the spike/import identity-oracle rule.
+        #expect(item.persistentModelID == originalPersistentID,
+                "an id-matched draft must update the row, not replace it")
+    }
+
+    @Test("ids missing from the drafts delete their rows; survivors renumber to 0..<n")
+    func checklistMissingIDsDelete() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: ["One", "Two", "Three"].map { ChecklistDraft(id: nil, text: $0, isDone: false) })
+
+        var remaining = drafts(card)
+        remaining.remove(at: 0) // drop "One"
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: remaining)
+
+        #expect(card.sortedChecklistItems.map(\.text) == ["Two", "Three"])
+        #expect(card.sortedChecklistItems.map(\.position) == [0, 1], "survivors renumbered")
+        let allItems = (try? env.context.fetch(FetchDescriptor<ChecklistItem>())) ?? []
+        #expect(allItems.count == 2, "the deleted row is gone from the store, not just the card")
+    }
+
+    @Test("whitespace-only drafts are dropped at save; kept text passes through verbatim")
+    func checklistWhitespaceOnlyDraftsDropped() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [
+                                     ChecklistDraft(id: nil, text: "  Keep me  ", isDone: false),
+                                     ChecklistDraft(id: nil, text: "   ", isDone: false),
+                                     ChecklistDraft(id: nil, text: "", isDone: true),
+                                 ])
+
+        #expect(card.sortedChecklistItems.map(\.text) == ["  Keep me  "],
+                "drop whitespace-only, pass kept text through untrimmed (the labels-filter posture)")
+        #expect(card.sortedChecklistItems.map(\.position) == [0])
+    }
+
+    @Test("round-tripped drafts + unchanged fields register no undo step and keep updatedAt")
+    func checklistIdentityIsNoOp() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "One", isDone: true)])
+        env.undoManager?.removeAllActions()
+        let stamp = card.updatedAt
+
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: drafts(card))
+
+        #expect(env.undoManager?.canUndo == false, "an identity checklist must not be 'a change'")
+        #expect(card.updatedAt == stamp)
+    }
+
+    @Test("a checklist edit (insert+update+delete) is ONE undo step; undo restores exactly, redo reapplies")
+    func checklistEditIsOneUndoStep() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [
+                                     ChecklistDraft(id: nil, text: "One", isDone: false),
+                                     ChecklistDraft(id: nil, text: "Two", isDone: false),
+                                 ])
+        env.undoManager?.removeAllActions()
+
+        var edited = drafts(card)
+        edited[0].isDone = true                                        // update
+        edited.remove(at: 1)                                           // delete "Two"
+        edited.append(ChecklistDraft(id: nil, text: "Three", isDone: false)) // insert
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: edited)
+        #expect(card.sortedChecklistItems.map(\.text) == ["One", "Three"])
+
+        env.undoManager?.undo()
+        #expect(card.sortedChecklistItems.map(\.text) == ["One", "Two"],
+                "one ⌘Z reverses the whole staged checklist edit")
+        #expect(card.sortedChecklistItems.map(\.isDone) == [false, false])
+        #expect(env.undoManager?.canUndo == false, "exactly one step")
+
+        // Redo of item-level inserts under one EXISTING card is a single-parent-level re-insert —
+        // the shape createBoard's redo (board + lists) already proves safe. This is NOT the
+        // spike's multi-level-cascade question. If this line ever crashes or loses rows, that is
+        // spike-class evidence: STOP and re-open the Task 0 verdict — do not weaken the test.
+        env.undoManager?.redo()
+        #expect(card.sortedChecklistItems.map(\.text) == ["One", "Three"])
+        #expect(card.sortedChecklistItems.map(\.isDone) == [true, false])
     }
 }

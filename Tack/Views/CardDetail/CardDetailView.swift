@@ -133,7 +133,10 @@ struct CardDetailView: View {
             labels: labels,
             dueDate: dueDate,
             includesTime: includesTime,
-            durationMinutes: durationMinutes
+            durationMinutes: durationMinutes,
+            // M-E Task 1 bridge: identity payload (no sheet UI for items yet — Task 3 swaps this
+            // for the staged checklistDrafts). An identity array diffs to "no checklist change".
+            checklist: ChecklistDraft.drafts(of: card)
         )
     }
 }
