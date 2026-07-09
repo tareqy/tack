@@ -338,33 +338,46 @@ final class BoardStore {
         }
     }
 
-    /// Normalizes to local start-of-day (includesTime stays false in the MVP).
-    func setDueDate(_ date: Date?, on card: Card) {
+    /// One undo step ("Set Due Date"). Date-only calls (the defaults — every pre-M-B call site)
+    /// normalize to local start-of-day with `includesTime` false, exactly as before. Timed calls
+    /// (M-B) store the raw wall-clock `date` with `includesTime` true. `durationMinutes` is kept
+    /// only when the call is timed AND the value is positive — nil otherwise, so a date-only card
+    /// can never carry a stray duration and a zero/negative slot is never persisted.
+    func setDueDate(_ date: Date?, on card: Card, includesTime: Bool = false, durationMinutes: Int? = nil) {
         withUndoGroup("Set Due Date") {
+            let normalizedIncludesTime = date != nil && includesTime
             if let date {
-                card.dueDate = Calendar.current.startOfDay(for: date)
+                card.dueDate = normalizedIncludesTime ? date : Calendar.current.startOfDay(for: date)
             } else {
                 card.dueDate = nil
             }
-            card.includesTime = false
+            card.includesTime = normalizedIncludesTime
+            card.durationMinutes = (normalizedIncludesTime && (durationMinutes ?? 0) > 0) ? durationMinutes : nil
             card.updatedAt = .now
             save()
         }
     }
 
     /// Commits every staged field of the M6 card-detail sheet as ONE undo group ("Edit Card"), so a
-    /// single ⌘Z reverses title/details/labels/dueDate together. Applies only the fields that
+    /// single ⌘Z reverses title/details/labels/dueDate/time together. Applies only the fields that
     /// actually changed (labels are diffed against the card's current set; untouched labels aren't
     /// re-written) and bumps `updatedAt` only if something changed — a call where every argument
     /// already matches the card's current state registers no undo step at all. `title` is trimmed;
     /// an empty/whitespace-only result is a no-op for the title specifically (the existing title is
     /// kept) rather than clearing it — other changed fields in the same call still apply and still
-    /// bump `updatedAt`. `dueDate` is normalized exactly like `setDueDate` (local start-of-day;
-    /// `includesTime` stays false).
-    func applyCardEdits(_ card: Card, title: String, details: String?, labels: Set<LabelColor>, dueDate: Date?) {
+    /// bump `updatedAt`. `dueDate` is normalized exactly like `setDueDate`: local start-of-day when
+    /// `includesTime` is false, the raw wall-clock value when true; `durationMinutes` survives only
+    /// on a timed edit with a positive value. `includesTime`/`durationMinutes` are deliberately
+    /// NOT defaulted — a defaulted `includesTime: false` here would let any unrelated edit (a title
+    /// rename committed through the sheet) silently wipe a card's time slot, so every call site
+    /// must state its time semantics explicitly.
+    func applyCardEdits(_ card: Card, title: String, details: String?, labels: Set<LabelColor>,
+                        dueDate: Date?, includesTime: Bool, durationMinutes: Int?) {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let newTitle = trimmedTitle.isEmpty ? card.title : trimmedTitle
-        let normalizedDueDate = dueDate.map { Calendar.current.startOfDay(for: $0) }
+        let normalizedIncludesTime = dueDate != nil && includesTime
+        let normalizedDueDate = includesTime ? dueDate : dueDate.map { Calendar.current.startOfDay(for: $0) }
+        let normalizedDuration = (normalizedIncludesTime && (durationMinutes ?? 0) > 0) ? durationMinutes : nil
         let currentLabelColors = Set(card.labels.compactMap { LabelColor(rawValue: $0.colorName) })
         let labelsToAdd = labels.subtracting(currentLabelColors)
         let labelsToRemove = currentLabelColors.subtracting(labels)
@@ -372,16 +385,20 @@ final class BoardStore {
         let titleChanged = newTitle != card.title
         let detailsChanged = details != card.details
         let dueDateChanged = normalizedDueDate != card.dueDate
+        let timeChanged = normalizedIncludesTime != card.includesTime || normalizedDuration != card.durationMinutes
         let labelsChanged = !labelsToAdd.isEmpty || !labelsToRemove.isEmpty
 
-        guard titleChanged || detailsChanged || dueDateChanged || labelsChanged else { return }
+        guard titleChanged || detailsChanged || dueDateChanged || timeChanged || labelsChanged else { return }
 
         withUndoGroup("Edit Card") {
             if titleChanged { card.title = newTitle }
             if detailsChanged { card.details = details }
-            if dueDateChanged {
+            if dueDateChanged || timeChanged {
+                // The dueDate family (date + flag + duration) writes as one unit: a pure time
+                // toggle must also settle the date's normalization, and vice versa.
                 card.dueDate = normalizedDueDate
-                card.includesTime = false
+                card.includesTime = normalizedIncludesTime
+                card.durationMinutes = normalizedDuration
             }
             if labelsChanged {
                 let labelsByColorName = Dictionary(uniqueKeysWithValues: fetchLabels().map { ($0.colorName, $0) })

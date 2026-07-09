@@ -84,7 +84,7 @@ struct FixtureSeederTests {
         #expect(labels.count == 8)
     }
 
-    @Test("due dates are normalized start-of-day and relative to now")
+    @Test("due dates: date-only cards are start-of-day; Write report is a timed 14:00 slot")
     func dueDatesNormalizedAndRelative() {
         let env = TestContainer()
         FixtureSeeder.seed("standard", context: env.context)
@@ -103,15 +103,21 @@ struct FixtureSeederTests {
         #expect(card("Buy milk", in: toDo)?.dueDate == yesterdayStart)
         #expect(card("Call plumber", in: toDo)?.dueDate == todayStart)
         #expect(card("Return library books", in: toDo)?.dueDate == tomorrowStart)
-        #expect(card("Write report", in: inProgress)?.dueDate == plusFiveStart)
         #expect(card("Book flights", in: done)?.dueDate == nil)
 
-        // Every non-nil due date must already be start-of-day normalized.
+        // M-B: Write report is the fixture's ONE timed card — a 2:00 PM slot, 60 minutes, +5d.
+        let writeReport = card("Write report", in: inProgress)
+        #expect(writeReport?.dueDate == calendar.date(bySettingHour: 14, minute: 0, second: 0, of: plusFiveStart))
+        #expect(writeReport?.includesTime == true)
+        #expect(writeReport?.durationMinutes == 60)
+
+        // Every DATE-ONLY card must be start-of-day normalized with no stray time state.
         let allCards = toDo.sortedCards + inProgress.sortedCards + done.sortedCards
-        for c in allCards {
+        for c in allCards where c.title != "Write report" {
+            #expect(c.includesTime == false)
+            #expect(c.durationMinutes == nil)
             if let due = c.dueDate {
                 #expect(due == calendar.startOfDay(for: due))
-                #expect(c.includesTime == false)
             }
         }
     }

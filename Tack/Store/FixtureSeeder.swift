@@ -66,7 +66,11 @@ enum FixtureSeeder {
         store.setDueDate(daysFromNow(1), on: returnBooks)
 
         let writeReport = store.addCard(to: inProgress, title: "Write report")
-        store.setDueDate(daysFromNow(5), on: writeReport)
+        // M-B: the fixture's ONE timed card — a 2:00 PM slot, 60 minutes, five days out. Still
+        // `|upcoming` for BadgeUITests' suffix assertion (+5d 14:00 is always in the future),
+        // and the card roster/names are load-bearing across the UI suites — do not rename.
+        let writeReportSlot = calendar.date(bySettingHour: 14, minute: 0, second: 0, of: daysFromNow(5))!
+        store.setDueDate(writeReportSlot, on: writeReport, includesTime: true, durationMinutes: 60)
         store.toggleLabel(.red, on: writeReport)
 
         store.addCard(to: done, title: "Book flights") // no due date

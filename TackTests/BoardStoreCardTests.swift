@@ -164,7 +164,9 @@ struct BoardStoreCardTests {
             title: card.title,
             details: card.details,
             labels: [.red],
-            dueDate: card.dueDate
+            dueDate: card.dueDate,
+            includesTime: false,
+            durationMinutes: nil
         )
 
         #expect(card.updatedAt == originalUpdatedAt)
@@ -195,7 +197,9 @@ struct BoardStoreCardTests {
             title: "Renamed",
             details: "Some details",
             labels: [],
-            dueDate: dueDateWithTime
+            dueDate: dueDateWithTime,
+            includesTime: false,
+            durationMinutes: nil
         )
 
         #expect(card.title == "Renamed")
@@ -221,7 +225,9 @@ struct BoardStoreCardTests {
             title: card.title,
             details: card.details,
             labels: [.blue, .green], // drop red, keep blue, add green
-            dueDate: card.dueDate
+            dueDate: card.dueDate,
+            includesTime: false,
+            durationMinutes: nil
         )
 
         #expect(Set(card.labels.map(\.colorName)) == ["blue", "green"])
@@ -241,7 +247,9 @@ struct BoardStoreCardTests {
             title: "Renamed",
             details: "New details",
             labels: [.blue],
-            dueDate: .now
+            dueDate: .now,
+            includesTime: false,
+            durationMinutes: nil
         )
         #expect(card.title == "Renamed")
         #expect(card.details == "New details")
@@ -265,12 +273,76 @@ struct BoardStoreCardTests {
         let originalUpdatedAt = card.updatedAt
 
         Thread.sleep(forTimeInterval: 0.01)
-        env.store.applyCardEdits(card, title: "   ", details: "Added details", labels: [], dueDate: nil)
+        env.store.applyCardEdits(card, title: "   ", details: "Added details", labels: [], dueDate: nil,
+                                 includesTime: false, durationMinutes: nil)
 
         #expect(card.title == "Keep Me")
         // Other fields DID change, so the whole call still applies and still bumps updatedAt —
         // the empty-title rule only no-ops the title itself.
         #expect(card.updatedAt > originalUpdatedAt)
         #expect(card.details == "Added details")
+    }
+
+    @Test("applyCardEdits with includesTime keeps the raw time and stores the duration")
+    func applyCardEditsTimedKeepsRawTimeAndDuration() {
+        let env = TestContainer()
+        let board = makeBoard(env)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Task")
+
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 8
+        components.day = 15
+        components.hour = 14
+        let slotStart = Calendar.current.date(from: components)!
+
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: slotStart, includesTime: true, durationMinutes: 90)
+
+        #expect(card.dueDate == slotStart, "timed dates are NOT startOfDay-normalized")
+        #expect(card.includesTime == true)
+        #expect(card.durationMinutes == 90)
+    }
+
+    @Test("a pure time-toggle edit is a real change: exactly one undo step, not a no-op")
+    func applyCardEditsTimeToggleIsOneUndoStep() {
+        let env = TestContainer(withUndo: true)
+        let board = makeBoard(env)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Task")
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 8
+        components.day = 15
+        let day = Calendar.current.date(from: components)!
+        env.store.setDueDate(day, on: card) // date-only: startOfDay, includesTime false
+        env.undoManager?.removeAllActions()
+
+        // Same dueDate VALUE (already start-of-day) — dueDateChanged is false; timeChanged
+        // alone must open the one "Edit Card" undo group.
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: card.dueDate, includesTime: true, durationMinutes: nil)
+
+        #expect(card.includesTime == true)
+        #expect(env.undoManager?.canUndo == true, "a pure time toggle must register an undo step")
+        env.undoManager?.undo()
+        #expect(card.includesTime == false)
+        #expect(env.undoManager?.canUndo == false, "…and exactly one")
+    }
+
+    @Test("clearing the due date also clears includesTime and durationMinutes")
+    func applyCardEditsClearingDueDateClearsTimeState() {
+        let env = TestContainer()
+        let board = makeBoard(env)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Task")
+        env.store.setDueDate(.now, on: card, includesTime: true, durationMinutes: 60)
+
+        // nil dueDate with stray time args is the picker's Clear shape — the normalization
+        // (`dueDate != nil && includesTime`) must win over the leftover flags.
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: true, durationMinutes: 60)
+
+        #expect(card.dueDate == nil)
+        #expect(card.includesTime == false)
+        #expect(card.durationMinutes == nil)
     }
 }

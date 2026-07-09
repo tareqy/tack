@@ -236,7 +236,8 @@ struct BoardStoreImportTests {
         a.store.setCollapsed(alphaLists[1], true)
         let cardOne = a.store.addCard(to: alphaLists[0], title: "Card One")
         a.store.applyCardEdits(cardOne, title: "Card One", details: "line1\nline2",
-                               labels: [.red, .blue], dueDate: Date(timeIntervalSince1970: 1_781_800_000))
+                               labels: [.red, .blue], dueDate: Date(timeIntervalSince1970: 1_781_800_000),
+                               includesTime: false, durationMinutes: nil)
         a.store.addCard(to: alphaLists[0], title: "Card Two")
         a.store.createBoard(name: "Beta", emoji: nil)
 

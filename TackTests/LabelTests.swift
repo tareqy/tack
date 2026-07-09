@@ -82,4 +82,66 @@ struct LabelTests {
         env.store.setDueDate(nil, on: card)
         #expect(card.dueDate == nil)
     }
+
+    @Test("setDueDate with includesTime keeps the raw time and stores the duration")
+    func setDueDateTimedKeepsRawTimeAndDuration() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "Board", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 8
+        components.day = 15
+        components.hour = 14
+        components.minute = 0
+        let slotStart = Calendar.current.date(from: components)!
+
+        env.store.setDueDate(slotStart, on: card, includesTime: true, durationMinutes: 60)
+
+        #expect(card.dueDate == slotStart, "timed dates are NOT startOfDay-normalized")
+        #expect(card.includesTime == true)
+        #expect(card.durationMinutes == 60)
+    }
+
+    @Test("setDueDate normalizes non-positive durations to nil")
+    func setDueDateNonPositiveDurationNil() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "Board", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+
+        env.store.setDueDate(.now, on: card, includesTime: true, durationMinutes: 0)
+        #expect(card.durationMinutes == nil)
+        env.store.setDueDate(.now, on: card, includesTime: true, durationMinutes: -30)
+        #expect(card.durationMinutes == nil)
+        #expect(card.includesTime == true, "the flag itself survives — only the duration is clamped")
+    }
+
+    @Test("date-only and nil setDueDate calls both clear a previous time slot")
+    func setDueDateDateOnlyAndNilClearTimeState() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "Board", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 8
+        components.day = 15
+        components.hour = 14
+        let slotStart = Calendar.current.date(from: components)!
+        env.store.setDueDate(slotStart, on: card, includesTime: true, durationMinutes: 60)
+
+        // Date-only call (the defaults) downgrades: startOfDay, flag off, duration gone.
+        env.store.setDueDate(slotStart, on: card)
+        #expect(card.dueDate == Calendar.current.startOfDay(for: slotStart))
+        #expect(card.includesTime == false)
+        #expect(card.durationMinutes == nil)
+
+        // Re-time it, then clear with nil — even with stray time args, everything resets.
+        env.store.setDueDate(slotStart, on: card, includesTime: true, durationMinutes: 60)
+        env.store.setDueDate(nil, on: card, includesTime: true, durationMinutes: 60)
+        #expect(card.dueDate == nil)
+        #expect(card.includesTime == false)
+        #expect(card.durationMinutes == nil)
+    }
 }

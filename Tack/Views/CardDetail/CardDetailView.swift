@@ -127,7 +127,11 @@ struct CardDetailView: View {
             title: title,
             details: trimmedDetails.isEmpty ? nil : trimmedDetails,
             labels: labels,
-            dueDate: dueDate
+            dueDate: dueDate,
+            // Interim (M-B Task 1): pass the card's CURRENT time state through unchanged so an
+            // unrelated edit never wipes a time slot. Task 3 replaces both with staged @State.
+            includesTime: card.includesTime,
+            durationMinutes: card.durationMinutes
         )
     }
 }
