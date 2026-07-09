@@ -494,4 +494,100 @@ struct BoardStoreCardTests {
         #expect(card.sortedChecklistItems.map(\.text) == ["One", "Three"])
         #expect(card.sortedChecklistItems.map(\.isDone) == [true, false])
     }
+
+    @Test("an order-only draft change is a real change: renumbered in draft order, one undo step")
+    func checklistOrderOnlyChangeIsRealChange() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: ["One", "Two", "Three"].map { ChecklistDraft(id: nil, text: $0, isDone: false) })
+        env.undoManager?.removeAllActions()
+
+        var reordered = drafts(card)
+        reordered.swapAt(0, 1) // ids/text/isDone untouched — order is the ONLY delta
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: reordered)
+
+        #expect(card.sortedChecklistItems.map(\.text) == ["Two", "One", "Three"],
+                "draft order IS the order — positions renumber to the reordered drafts")
+        #expect(card.sortedChecklistItems.map(\.position) == [0, 1, 2])
+        #expect(env.undoManager?.canUndo == true, "an order-only change must register an undo step")
+        env.undoManager?.undo()
+        #expect(card.sortedChecklistItems.map(\.text) == ["One", "Two", "Three"],
+                "one ⌘Z restores the original order")
+        #expect(env.undoManager?.canUndo == false, "…and exactly one")
+    }
+
+    @Test("a whitespace-only draft as the sole delta is a whole-call no-op")
+    func checklistWhitespaceOnlySoleDeltaIsNoOp() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "One", isDone: false),
+                                             ChecklistDraft(id: nil, text: "Two", isDone: true)])
+        env.undoManager?.removeAllActions()
+        let stamp = card.updatedAt
+
+        // The whitespace-only row is dropped BEFORE the changed-diff, so the kept drafts are an
+        // identity array — the whole call must fall through the no-change guard.
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: drafts(card) + [ChecklistDraft(id: nil, text: "   ", isDone: false)])
+
+        #expect(env.undoManager?.canUndo == false,
+                "a draft that would be dropped at save must not count as 'a change'")
+        #expect(card.updatedAt == stamp)
+        #expect(card.sortedChecklistItems.count == 2)
+    }
+
+    @Test("a nil-id draft interleaved between existing rows lands in draft order")
+    func checklistInterleavedInsertLandsInOrder() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "A", isDone: false),
+                                             ChecklistDraft(id: nil, text: "C", isDone: false)])
+
+        var edited = drafts(card)
+        edited.insert(ChecklistDraft(id: nil, text: "B", isDone: false), at: 1)
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: edited)
+
+        #expect(card.sortedChecklistItems.map(\.text) == ["A", "B", "C"],
+                "an insert between survivors takes its draft slot, not the tail")
+        #expect(card.sortedChecklistItems.map(\.position) == [0, 1, 2])
+    }
+
+    @Test("a title-only edit with a drafts(of:) passthrough leaves checklist rows untouched")
+    func titleOnlyEditLeavesChecklistIdentityUntouched() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        env.store.applyCardEdits(card, title: card.title, details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: [ChecklistDraft(id: nil, text: "One", isDone: false),
+                                             ChecklistDraft(id: nil, text: "Two", isDone: true)])
+        // persistentModelID, never ObjectIdentifier — the spike/import identity-oracle rule.
+        let originalPersistentIDs = card.sortedChecklistItems.map(\.persistentModelID)
+
+        // CardDetailView's Task-1 bridge shape: an unrelated field changes, identity checklist.
+        env.store.applyCardEdits(card, title: "Renamed", details: card.details, labels: [],
+                                 dueDate: nil, includesTime: false, durationMinutes: nil,
+                                 checklist: drafts(card))
+
+        #expect(card.title == "Renamed")
+        #expect(card.sortedChecklistItems.map(\.persistentModelID) == originalPersistentIDs,
+                "the identity payload must not delete+reinsert rows on an unrelated edit")
+        #expect(card.sortedChecklistItems.map(\.text) == ["One", "Two"])
+        #expect(card.sortedChecklistItems.map(\.isDone) == [false, true])
+        #expect(card.sortedChecklistItems.map(\.position) == [0, 1])
+    }
 }
