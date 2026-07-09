@@ -134,10 +134,13 @@ struct RootView: View {
                         Image(systemName: "list.bullet")
                             .accessibilityLabel("List")
                             .tag(BoardViewMode.list)
+                        Image(systemName: "calendar")
+                            .accessibilityLabel("Calendar")
+                            .tag(BoardViewMode.calendar)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .help("Show the selected board as columns or as a due-date list")
+                    .help("Show the selected board as columns, a due-date list, or a month calendar")
                     .disabled(selectedBoard == nil)
                     .accessibilityIdentifier(AccessibilityID.viewModePicker)
                 }
@@ -506,12 +509,20 @@ struct RootView: View {
                            onImportBoards: { isPresentingImporter = true })
                 .navigationTitle("Tack")
         } else if let selectedBoard {
-            // M-C: the view-mode seam. The two views are different TYPES in this if/else, so
+            // M-C/M-D: the view-mode seam. The views are different TYPES in this switch, so
             // switching modes tears down the old view's @State (board-local selection, filter
-            // bar) — accepted and honest: a mode switch is a context switch.
-            if selectedBoardViewMode == .list {
+            // bar, month anchor) — accepted and honest: a mode switch is a context switch.
+            switch selectedBoardViewMode {
+            case .list:
                 ListBoardView(board: selectedBoard, store: store)
-            } else {
+            case .calendar:
+                // M-D Task 1: temporary — the calendar view lands in Task 2 (CalendarBoardView);
+                // until then calendar mode renders the board canvas so the seam (third segment,
+                // menu item, persistence through the existing map, marker) ships green without
+                // the view. KNOWN + temporary: view-mode-value honestly reads "calendar" while
+                // the canvas still renders.
+                BoardView(board: selectedBoard, store: store)
+            case .board:
                 BoardView(board: selectedBoard, store: store)
             }
         } else {

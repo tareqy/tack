@@ -59,6 +59,16 @@ struct BoardActions {
     /// editor — so `ListBoardView` passes `false` here. Defaulted `true` so `BoardView`'s
     /// construction is untouched — same defaulted-`var`-not-`let` reasoning as `canFilter`.
     var canCreateList: Bool = true
+    /// M-D: whether View ▸ Select Next/Previous/Left/Right (bare arrows) apply to the current
+    /// board surface. Calendar mode has no arrow-key selection model in v1 — a month grid wants
+    /// 2D day-cell navigation, not the card-list walk `SelectionNavigation` implements, and
+    /// faking one would be worse than none — so `CalendarBoardView` passes `false` to disable
+    /// the four items HONESTLY instead of leaving them enabled-but-inert (the
+    /// canFilter/canMoveCards/canCreateList precedent, one more time). Defaulted `true` so
+    /// `BoardView`'s and `ListBoardView`'s constructions are untouched — same
+    /// defaulted-`var`-not-`let` reasoning as `canFilter` (a defaulted `let` drops out of the
+    /// memberwise init).
+    var canNavigateSelection: Bool = true
 }
 
 /// Board-navigation command surface published by `RootView`: always present (RootView is always in

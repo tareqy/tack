@@ -122,8 +122,8 @@ final class ListViewUITests: TackUITestCase {
         } else if picker.buttons["List"].exists {
             picker.buttons["List"].click()
         } else {
-            // Last resort: List is the right half of a two-segment control.
-            picker.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).click()
+            // Last resort: List is the MIDDLE third of the (since M-D) three-segment control.
+            picker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         }
         XCTAssertTrue(poll(timeout: timeout) { self.viewModeValue() == "list" },
                       "view-mode-value should read 'list' after clicking the List segment")

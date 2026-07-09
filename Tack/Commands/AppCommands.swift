@@ -108,17 +108,26 @@ struct AppCommands: Commands {
 
             Divider()
 
-            // M-C: per-board view mode. Sentence-style titles under the View menu ("View as
-            // Board"). ⌥⌘B / ⌥⌘L — both free in the shortcut table (⌘1–9, ⌘N-family, ⇧⌘E/I,
-            // ⌃⌘S, ⌘F, ⌘O, ⌘-arrows and bare arrows are all taken; these two are not). Enabled
-            // whenever boards exist; `setViewMode` itself no-ops without a selected board (the
-            // `guardedMutation` belt-and-suspenders posture New Board already uses).
+            // M-C/M-D: per-board view mode. Sentence-style titles under the View menu ("View as
+            // Board"). ⌥⌘B / ⌥⌘L / ⌥⌘C — all free in the shortcut table (⌘1–9, ⌘N-family,
+            // ⇧⌘E/I, ⌃⌘S, ⌘F, ⌘O, ⌘-arrows and bare arrows are all taken; these three are not).
+            // ⌥⌘C specifically: the only system claimant is Format ▸ "Copy Style", and Tack has
+            // no Format menu (no TextFormattingCommands installed) — verified by grepping every
+            // `keyboardShortcut` in the app (only sheet default/cancel actions outside this
+            // file) and by walking the running app's menus; the human checklist re-confirms no
+            // duplicate-shortcut beep. Enabled whenever boards exist; `setViewMode` itself
+            // no-ops without a selected board (the `guardedMutation` belt-and-suspenders
+            // posture New Board already uses).
             Button("as Board") { guardedMutation { boardSelection?.setViewMode(.board) } }
                 .keyboardShortcut("b", modifiers: [.command, .option])
                 .disabled(boardSelection == nil || boardSelection?.boardNames.isEmpty == true)
 
             Button("as List") { guardedMutation { boardSelection?.setViewMode(.list) } }
                 .keyboardShortcut("l", modifiers: [.command, .option])
+                .disabled(boardSelection == nil || boardSelection?.boardNames.isEmpty == true)
+
+            Button("as Calendar") { guardedMutation { boardSelection?.setViewMode(.calendar) } }
+                .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(boardSelection == nil || boardSelection?.boardNames.isEmpty == true)
 
             Divider()
@@ -149,13 +158,17 @@ struct AppCommands: Commands {
             // selection, ↓/↑ is the keyboard ENTRY point — `SelectionNavigation.next` maps a nil
             // selection to the first card of the first non-empty list (an unreachable branch while
             // this was gated on an existing selection).
+            // M-D: canNavigateSelection honestly disables all four in calendar mode, which has no
+            // arrow-key selection model in v1.
             Button("Select Previous Card") { guardedMutation { boardActions?.moveSelection(.up) } }
                 .keyboardShortcut(.upArrow, modifiers: [])
-                .disabled(boardActions == nil || isTextInputActive)
+                .disabled(boardActions == nil || isTextInputActive
+                          || boardActions?.canNavigateSelection == false)
 
             Button("Select Next Card") { guardedMutation { boardActions?.moveSelection(.down) } }
                 .keyboardShortcut(.downArrow, modifiers: [])
-                .disabled(boardActions == nil || isTextInputActive)
+                .disabled(boardActions == nil || isTextInputActive
+                          || boardActions?.canNavigateSelection == false)
 
             // PRD C-10 promises selection navigation in all four directions; left/right complete
             // the pair started by up/down above (same gating, same `moveSelection` entry point —
@@ -163,11 +176,13 @@ struct AppCommands: Commands {
             // the neighbouring non-empty list, clamped, skipping collapsed/empty lists).
             Button("Select Card Left") { guardedMutation { boardActions?.moveSelection(.left) } }
                 .keyboardShortcut(.leftArrow, modifiers: [])
-                .disabled(boardActions == nil || isTextInputActive)
+                .disabled(boardActions == nil || isTextInputActive
+                          || boardActions?.canNavigateSelection == false)
 
             Button("Select Card Right") { guardedMutation { boardActions?.moveSelection(.right) } }
                 .keyboardShortcut(.rightArrow, modifiers: [])
-                .disabled(boardActions == nil || isTextInputActive)
+                .disabled(boardActions == nil || isTextInputActive
+                          || boardActions?.canNavigateSelection == false)
 
             Divider()
 
