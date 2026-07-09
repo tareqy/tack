@@ -757,7 +757,13 @@ final class BoardStore {
         // max position, envelope order. `existingAreas` comes from the CALLER, never fetched
         // here: replaceAllBoards passes [] after deleting every area — a mid-span fetch could
         // resurface pending-deleted rows and attach boards to a dying area.
-        var areasByName = Dictionary(uniqueKeysWithValues: existingAreas.map { ($0.name, $0) })
+        // Tolerant (not `uniqueKeysWithValues:`) on purpose: unlike `CardLabel.colorName`,
+        // `Area.name` carries NO schema-level `@Attribute(.unique)` — uniqueness today is only a
+        // convention across two independently-written creation sites (`createArea`'s
+        // find-or-create and `resolveArea` below), and it's a convention the rename surface can
+        // break. A same-named duplicate must not fatal-crash the import; first-wins matches the
+        // sanitizer's own dedupe-keep-first posture.
+        var areasByName = Dictionary(existingAreas.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         var nextAreaPosition = (existingAreas.map(\.position).max() ?? -1) + 1
         func resolveArea(named name: String, isCollapsed: Bool) -> Area {
             if let existing = areasByName[name] { return existing }

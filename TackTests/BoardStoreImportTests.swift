@@ -354,6 +354,36 @@ struct BoardStoreImportTests {
         #expect(imported[0].area?.name == "Ghost")
     }
 
+    @Test("M-F review fix: import tolerates two Areas that share the exact same name (convention violated directly, not via createArea)")
+    func importToleratesConventionViolatingDuplicateAreaNames() throws {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        // Area.name has NO schema-level uniqueness — it's a convention enforced only by
+        // createArea's find-or-create. Insert two same-named rows DIRECTLY, bypassing that
+        // convention, which is the only way to violate it.
+        let first = Area(name: "Home", position: 0, isCollapsed: false)
+        let second = Area(name: "Home", position: 1, isCollapsed: true)
+        env.context.insert(first)
+        env.context.insert(second)
+        try env.context.save()
+        // resolveArea's dictionary is first-wins over whatever ORDER fetchAreas() returns — and
+        // that fetch carries no sort descriptor, so it is not guaranteed to match insertion or
+        // position order (confirmed: this flipped between an isolated run and deep into the full
+        // suite). Pin against the actual fetch-order winner, not an assumed one.
+        let winnerPID = try #require(env.store.fetchAreasForTesting().first { $0.name == "Home" }).persistentModelID
+
+        var board = ExportBoard(name: "A", emoji: nil, position: 0, themeName: "default",
+                                customThemeHex: nil, createdAt: .now, lists: [])
+        board.area = "Home"
+        let envelope = ExportEnvelope(formatVersion: 5, exportedAt: .now, boards: [board])
+
+        let imported = try env.store.importBoards(envelope)
+
+        #expect(imported[0].area?.persistentModelID == winnerPID,
+                "first-wins matches the import sanitizer's dedupe-keep-first posture")
+        #expect(env.store.fetchAreasForTesting().count == 2, "no third Area created for the duplicate name")
+    }
+
     @Test("M-F: Replace All deletes every existing area — none stranded, even empty ones")
     func replaceAllWipesAreas() throws {
         let env = TestContainer()
