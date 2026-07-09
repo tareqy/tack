@@ -36,7 +36,15 @@ enum FixtureSeeder {
         store.ensureLabelsSeeded()
 
         seedGroceries(store: store)
-        store.createBoard(name: "Work", emoji: "💼")
+        let work = store.createBoard(name: "Work", emoji: "💼")
+        // M-F: the fixture's ONE area — "Office", EXPANDED, wrapping the EXISTING Work board;
+        // Groceries stays ungrouped. Grouping an existing board (rather than adding one) keeps
+        // the load-bearing roster byte-identical: same two rows, same names, same global
+        // positions (Groceries 0, Work 1), same flat ⌘1/⌘2 order — every pre-M-F suite sees its
+        // rows exactly where they were, plus one sibling header element (`area-Office`) that no
+        // `board-`-prefixed query can match. Do not rename the area or the boards; do not
+        // collapse Office at seed (a hidden Work row would break half the suites).
+        _ = store.createArea(named: "Office", moving: work)
     }
 
     @MainActor

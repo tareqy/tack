@@ -14,9 +14,10 @@ struct ImportDecodeTests {
         return calendar
     }
 
-    private func json(_ boards: String, formatVersion: Int = 1) -> Data {
-        Data("""
-        {"boards":[\(boards)],"exportedAt":"2026-07-08T00:00:00Z","formatVersion":\(formatVersion)}
+    private func json(_ boards: String, formatVersion: Int = 1, areas: String? = nil) -> Data {
+        let areasFragment = areas.map { "\"areas\":\($0)," } ?? ""
+        return Data("""
+        {\(areasFragment)"boards":[\(boards)],"exportedAt":"2026-07-08T00:00:00Z","formatVersion":\(formatVersion)}
         """.utf8)
     }
 
@@ -31,9 +32,10 @@ struct ImportDecodeTests {
         """
     }
 
-    private func boardJSON(cards: String, customThemeHex: String = "null") -> String {
-        """
-        {"createdAt":"2026-01-01T00:00:00Z","customThemeHex":\(customThemeHex),"lists":[
+    private func boardJSON(cards: String, customThemeHex: String = "null", area: String? = nil) -> String {
+        let areaFragment = area.map { "\"area\":\"\($0)\"," } ?? ""
+        return """
+        {\(areaFragment)"createdAt":"2026-01-01T00:00:00Z","customThemeHex":\(customThemeHex),"lists":[
           {"cards":[\(cards)],"isCollapsed":false,"name":"L","position":0}
         ],"name":"B","position":0,"themeName":"default"}
         """
@@ -69,9 +71,9 @@ struct ImportDecodeTests {
         catch { Issue.record("expected ImportError, got \(error)") }
     }
 
-    @Test("formatVersion 5 and 0 throw .unsupportedVersion carrying the file's version")
+    @Test("formatVersion 6 and 0 throw .unsupportedVersion carrying the file's version")
     func versionGate() {
-        for version in [5, 0] {
+        for version in [6, 0] {
             do { _ = try ExportDocument.decodeForImport(json("", formatVersion: version)) }
             catch let error as ImportError { #expect(error == .unsupportedVersion(version)) }
             catch { Issue.record("expected ImportError, got \(error)") }
@@ -103,6 +105,39 @@ struct ImportDecodeTests {
         #expect(envelope.formatVersion == 3)
         #expect(envelope.boards[0].lists[0].cards[0].checklist == nil,
                 "missing key decodes nil — the optional-not-defaulted-array shape is load-bearing")
+    }
+
+    @Test("a version-4 file (no areas key) still imports; areas and board.area decode nil")
+    func v4FileStillImports() throws {
+        let data = json(boardJSON(cards: cardJSON()), formatVersion: 4)
+        let envelope = try ExportDocument.decodeForImport(data)
+        #expect(envelope.formatVersion == 4)
+        #expect(envelope.areas == nil,
+                "missing key decodes nil — the optional-not-defaulted-array shape is load-bearing")
+        #expect(envelope.boards[0].area == nil)
+    }
+
+    @Test("area names are trimmed, whitespace-only areas dropped, duplicates deduped keeping the first")
+    func areaNamesTrimmedDedupedAndEmptiesDropped() throws {
+        let payload = #"[{"isCollapsed":true,"name":"  Home  "},{"isCollapsed":false,"name":"   "},{"isCollapsed":false,"name":"Home"},{"isCollapsed":false,"name":"Work"}]"#
+        let envelope = try ExportDocument.decodeForImport(
+            json(boardJSON(cards: ""), formatVersion: 5, areas: payload))
+        #expect(envelope.areas == [
+            ExportArea(name: "Home", isCollapsed: true),
+            ExportArea(name: "Work", isCollapsed: false),
+        ], "one row per merge key, first occurrence wins, order preserved")
+    }
+
+    @Test("a board's area ref is trimmed; whitespace-only becomes nil; a dangling ref is KEPT")
+    func boardAreaRefTrimmedAndEmptiedToNil() throws {
+        let dangling = try ExportDocument.decodeForImport(
+            json(boardJSON(cards: "", area: "  Ghost  "), formatVersion: 5, areas: "[]"))
+        #expect(dangling.boards[0].area == "Ghost",
+                "dangling refs survive sanitization — materialize's find-or-create resolves them")
+
+        let blank = try ExportDocument.decodeForImport(
+            json(boardJSON(cards: "", area: "   "), formatVersion: 5, areas: "[]"))
+        #expect(blank.boards[0].area == nil)
     }
 
     @Test("whitespace-only checklist items are dropped; kept items pass through in order, text verbatim")
@@ -220,7 +255,9 @@ struct ImportDecodeTests {
                                                   checklist: #"[{"text":"A","isDone":true},{"text":" ","isDone":false}]"#) + "," +
                                          cardJSON(dueDate: "2026-07-08T15:30:00Z",
                                                   includesTime: true, durationMinutes: 45),
-                          customThemeHex: "\"#ff0000\""))
+                          customThemeHex: "\"#ff0000\"", area: " Home "),
+                          formatVersion: 5,
+                          areas: #"[{"isCollapsed":false,"name":" Home "},{"isCollapsed":true,"name":"Home"}]"#)
         let once = try ExportDocument.decodeForImport(data, calendar: utcCalendar)
         let twice = try ExportDocument.decodeForImport(try ExportDocument.encode(once), calendar: utcCalendar)
         #expect(once == twice)

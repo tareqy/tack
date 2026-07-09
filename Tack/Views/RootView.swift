@@ -10,6 +10,7 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.undoManager) private var undoManager
     @Query(sort: \Board.position) private var boards: [Board]
+    @Query(sort: \Area.position) private var areas: [Area]
 
     @AppStorage private var selectedBoardIDRaw: String?
     @State private var selectedBoardID: UUID?
@@ -304,7 +305,7 @@ struct RootView: View {
         guard let filename = exportToFilename, exportSelfCheck == nil else { return }
         let boards = sortedBoards
         guard !boards.isEmpty,
-              let data = try? ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)),
+              let data = try? ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards, areas: Array(areas))),
               let directory = try? ModelContainerFactory.uiTestDirectory() else { return }
         let url = directory.appendingPathComponent(filename)
         try? data.write(to: url)
@@ -320,7 +321,7 @@ struct RootView: View {
     private func presentExporter() {
         let ordered = sortedBoards
         guard !ordered.isEmpty,
-              let data = try? ExportDocument.encode(ExportDocument.makeEnvelope(boards: ordered)) else { return }
+              let data = try? ExportDocument.encode(ExportDocument.makeEnvelope(boards: ordered, areas: Array(areas))) else { return }
         exportDocument = ExportJSONDocument(data: data)
         isPresentingExporter = true
     }

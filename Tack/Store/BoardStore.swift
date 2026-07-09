@@ -653,6 +653,8 @@ final class BoardStore {
     /// rolled back and the error is wrapped as `ImportError.saveFailed` — nothing was persisted,
     /// existing boards are unchanged.
     ///
+    /// M-F: envelope areas merge by exact name into the EXISTING areas — see `materialize`.
+    ///
     /// Append import is NOT undoable — the spike gate failed: SwiftData's automatic undo
     /// registration deterministically drops 3rd-level Card inserts on redo of a multi-board
     /// graph (in-memory, 3/3 runs; see `ImportUndoOnDiskTests` and the spec's Spike outcome
@@ -679,7 +681,8 @@ final class BoardStore {
             held?.removeAllActions()
         }
         let basePosition = (fetchBoards().map(\.position).max() ?? -1) + 1
-        let imported = materialize(envelope, basePosition: basePosition, importedAt: importedAt)
+        let imported = materialize(envelope, basePosition: basePosition, importedAt: importedAt,
+                                   existingAreas: fetchAreas())
         do {
             try context.save()
         } catch {
@@ -699,6 +702,9 @@ final class BoardStore {
     ///
     /// Guards `.emptyReplace` as the store-level backstop behind the dialog's omitted Replace
     /// button: a zero-board envelope must never be able to wipe the store.
+    ///
+    /// M-F: restore-the-backup-EXACTLY also means every existing Area dies here — no empty group
+    /// survives a restore the backup never contained.
     @discardableResult
     func replaceAllBoards(with envelope: ExportEnvelope, importedAt: Date = .now) throws -> [Board] {
         guard !envelope.boards.isEmpty else { throw ImportError.emptyReplace }
@@ -713,7 +719,13 @@ final class BoardStore {
         for board in fetchBoards() {
             context.delete(board)
         }
-        let imported = materialize(envelope, basePosition: 0, importedAt: importedAt)
+        // M-F: Replace All's contract is restore-the-backup-EXACTLY — deleting boards only would
+        // strand every existing area as an empty group the backup never contained. Areas die in
+        // the same detached span and the same single save (rollback revives both).
+        for area in fetchAreas() {
+            context.delete(area)
+        }
+        let imported = materialize(envelope, basePosition: 0, importedAt: importedAt, existingAreas: [])
         do {
             try context.save()
         } catch {
@@ -732,9 +744,32 @@ final class BoardStore {
     /// (unique `colorName`; palette invariant = exactly 8 rows); a missing row is skipped, never
     /// created, mirroring `toggleLabel`'s guard. Deliberately NOT `createBoard` (which injects
     /// three default lists). Performs NO save — callers own the single-save transaction.
-    private func materialize(_ envelope: ExportEnvelope, basePosition: Int, importedAt: Date) -> [Board] {
+    private func materialize(_ envelope: ExportEnvelope, basePosition: Int, importedAt: Date,
+                             existingAreas: [Area]) -> [Board] {
         let allLabels = fetchLabels()
         let labelsByColorName = Dictionary(uniqueKeysWithValues: allLabels.map { ($0.colorName, $0) })
+
+        // M-F: area find-or-CREATE by exact trimmed name — the CardLabel merge dictionary shape
+        // with the OPPOSITE missing-row policy (labels are a closed 8-row palette: a miss skips;
+        // areas are open user data: a miss creates). An EXISTING area is reused as-is — its
+        // LOCAL isCollapsed wins (importing a backup must not fold/unfold the sidebar you're
+        // looking at); a CREATED area takes the envelope's flag and appends after the existing
+        // max position, envelope order. `existingAreas` comes from the CALLER, never fetched
+        // here: replaceAllBoards passes [] after deleting every area — a mid-span fetch could
+        // resurface pending-deleted rows and attach boards to a dying area.
+        var areasByName = Dictionary(uniqueKeysWithValues: existingAreas.map { ($0.name, $0) })
+        var nextAreaPosition = (existingAreas.map(\.position).max() ?? -1) + 1
+        func resolveArea(named name: String, isCollapsed: Bool) -> Area {
+            if let existing = areasByName[name] { return existing }
+            let area = Area(name: name, position: nextAreaPosition, isCollapsed: isCollapsed)
+            nextAreaPosition += 1
+            context.insert(area)
+            areasByName[name] = area
+            return area
+        }
+        for exportArea in envelope.areas ?? [] {
+            _ = resolveArea(named: exportArea.name, isCollapsed: exportArea.isCollapsed)
+        }
 
         return envelope.boards.enumerated().map { boardIndex, exportBoard in
             let board = Board(
@@ -747,6 +782,10 @@ final class BoardStore {
                 createdAt: exportBoard.createdAt
             )
             context.insert(board)
+            if let areaName = exportBoard.area {
+                // Dangling refs (sanitizer keeps them) create too — expanded by default.
+                board.area = resolveArea(named: areaName, isCollapsed: false)
+            }
             for (listIndex, exportList) in exportBoard.lists.enumerated() {
                 let list = BoardList(
                     name: exportList.name,

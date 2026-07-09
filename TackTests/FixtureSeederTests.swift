@@ -177,4 +177,21 @@ struct FixtureSeederTests {
             #expect(c.checklistItems.isEmpty, "\(c.title) must stay checklist-free — the roster is load-bearing")
         }
     }
+
+    @Test("M-F: standard seeds exactly one area — Office, expanded, holding Work; Groceries ungrouped; roster untouched")
+    func standardSeedsOfficeAreaAroundWork() throws {
+        let env = TestContainer()
+        FixtureSeeder.seed("standard", context: env.context)
+
+        let areas = (try? env.context.fetch(FetchDescriptor<Area>())) ?? []
+        #expect(areas.map(\.name) == ["Office"])
+        #expect(areas.first?.isCollapsed == false, "collapsed-at-seed would hide Work from every suite")
+        #expect(areas.first?.position == 0)
+
+        let boards = ((try? env.context.fetch(FetchDescriptor<Board>())) ?? []).sorted { $0.position < $1.position }
+        #expect(boards.map(\.name) == ["Groceries", "Work"], "the load-bearing roster is unchanged")
+        #expect(boards.map(\.position) == [0, 1], "global positions unchanged — flat ⌘1/⌘2 order intact")
+        #expect(boards[0].area == nil)
+        #expect(boards[1].area?.name == "Office")
+    }
 }

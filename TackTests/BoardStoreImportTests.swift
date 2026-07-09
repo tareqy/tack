@@ -270,7 +270,8 @@ struct BoardStoreImportTests {
 
         let fixedExportedAt = Date(timeIntervalSince1970: 1_781_827_200)
         let aBoards = fetchBoards(a.context)
-        let original = try ExportDocument.encode(ExportDocument.makeEnvelope(boards: aBoards, exportedAt: fixedExportedAt))
+        let aAreas = ((try? a.context.fetch(FetchDescriptor<Area>(sortBy: [SortDescriptor(\.position)]))) ?? [])
+        let original = try ExportDocument.encode(ExportDocument.makeEnvelope(boards: aBoards, areas: aAreas, exportedAt: fixedExportedAt))
 
         // Container B: fresh, PALETTE SEEDED FIRST (TestContainer does not seed it; an unseeded B
         // would silently drop every label), import through the full production decode path.
@@ -280,8 +281,96 @@ struct BoardStoreImportTests {
         try b.store.importBoards(try ExportDocument.decodeForImport(original))
 
         let bBoards = fetchBoards(b.context)
-        let reExported = try ExportDocument.encode(ExportDocument.makeEnvelope(boards: bBoards, exportedAt: fixedExportedAt))
+        let bAreas = ((try? b.context.fetch(FetchDescriptor<Area>(sortBy: [SortDescriptor(\.position)]))) ?? [])
+        let reExported = try ExportDocument.encode(ExportDocument.makeEnvelope(boards: bBoards, areas: bAreas, exportedAt: fixedExportedAt))
         #expect(reExported == original,
                 "byte-stable round trip: positions, label order, dates, theme, collapse state all survive")
+    }
+
+    // MARK: - Area merge (M-F)
+
+    @Test("M-F: import merges areas by exact name — existing row reused keeping LOCAL collapse; missing row created with the envelope's flag")
+    func importMergesAreasByExactNameFindOrCreate() throws {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        let local = try #require(env.store.createArea(named: "Home", moving: nil))
+        env.store.setAreaCollapsed(local, true)
+        let localPID = local.persistentModelID
+
+        var boardA = ExportBoard(name: "A", emoji: nil, position: 0, themeName: "default",
+                                 customThemeHex: nil, createdAt: .now, lists: [])
+        boardA.area = "Home"
+        var boardB = ExportBoard(name: "B", emoji: nil, position: 1, themeName: "default",
+                                 customThemeHex: nil, createdAt: .now, lists: [])
+        boardB.area = "New"
+        var envelope = ExportEnvelope(formatVersion: 5, exportedAt: .now, boards: [boardA, boardB])
+        envelope.areas = [ExportArea(name: "Home", isCollapsed: false),
+                          ExportArea(name: "New", isCollapsed: true)]
+
+        let imported = try env.store.importBoards(envelope)
+
+        let areas = env.store.fetchAreasForTesting().sorted { $0.position < $1.position }
+        #expect(areas.map(\.name) == ["Home", "New"], "one Home row — merged, not duplicated")
+        #expect(areas[0].persistentModelID == localPID, "the EXISTING row is reused (find, not create)")
+        #expect(areas[0].isCollapsed == true, "local collapse state wins on merge")
+        #expect(areas[1].isCollapsed == true, "created areas take the envelope's flag")
+        #expect(areas[1].position == 1, "created areas append after the existing max")
+        #expect(imported[0].area?.persistentModelID == localPID)
+        #expect(imported[1].area?.persistentModelID == areas[1].persistentModelID)
+    }
+
+    @Test("M-F: area merge is case-sensitive — 'home' does not merge into 'Home'")
+    func importCaseSensitiveAreaMerge() throws {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        _ = try #require(env.store.createArea(named: "Home", moving: nil))
+
+        var board = ExportBoard(name: "A", emoji: nil, position: 0, themeName: "default",
+                                customThemeHex: nil, createdAt: .now, lists: [])
+        board.area = "home"
+        var envelope = ExportEnvelope(formatVersion: 5, exportedAt: .now, boards: [board])
+        envelope.areas = [ExportArea(name: "home", isCollapsed: false)]
+
+        _ = try env.store.importBoards(envelope)
+
+        #expect(env.store.fetchAreasForTesting().count == 2,
+                "the merge key is exact and case-sensitive — the createArea decision, pinned end-to-end")
+    }
+
+    @Test("M-F: a dangling board.area ref (absent from areas[]) still creates its area")
+    func danglingAreaRefCreatesArea() throws {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        var board = ExportBoard(name: "A", emoji: nil, position: 0, themeName: "default",
+                                customThemeHex: nil, createdAt: .now, lists: [])
+        board.area = "Ghost"
+        let envelope = ExportEnvelope(formatVersion: 5, exportedAt: .now, boards: [board])
+
+        let imported = try env.store.importBoards(envelope)
+
+        let areas = env.store.fetchAreasForTesting()
+        #expect(areas.map(\.name) == ["Ghost"])
+        #expect(areas.first?.isCollapsed == false, "a synthesized area defaults expanded")
+        #expect(imported[0].area?.name == "Ghost")
+    }
+
+    @Test("M-F: Replace All deletes every existing area — none stranded, even empty ones")
+    func replaceAllWipesAreas() throws {
+        let env = TestContainer()
+        env.store.ensureLabelsSeeded()
+        let board = env.store.createBoard(name: "Old", emoji: nil)
+        _ = try #require(env.store.createArea(named: "Occupied", moving: board))
+        _ = try #require(env.store.createArea(named: "Empty", moving: nil))
+
+        let envelope = ExportEnvelope(
+            formatVersion: 5, exportedAt: .now,
+            boards: [ExportBoard(name: "Fresh", emoji: nil, position: 0, themeName: "default",
+                                 customThemeHex: nil, createdAt: .now, lists: [])])
+        _ = try env.store.replaceAllBoards(with: envelope)
+
+        #expect(env.store.fetchAreasForTesting().isEmpty,
+                "restore-the-backup-exactly: the backup had no areas, so neither does the store")
+        let boards = (try? env.context.fetch(FetchDescriptor<Board>())) ?? []
+        #expect(boards.map(\.name) == ["Fresh"])
     }
 }

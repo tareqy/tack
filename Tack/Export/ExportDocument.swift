@@ -20,6 +20,12 @@ struct ExportEnvelope: Codable, Equatable {
     var formatVersion: Int
     var exportedAt: Date
     var boards: [ExportBoard]
+    // OPTIONAL, defaulted nil — NOT a defaulted non-optional array: synthesized Codable throws
+    // keyNotFound on a missing key for a non-optional array (property defaults don't apply to
+    // decoding — the ExportCard.checklist finding, verbatim), so this is the ONLY shape that
+    // lets every v1–v4 file decode. The exporter always writes the key (empty array when no
+    // areas exist, keeping encoding deterministic); importers read `areas ?? []`.
+    var areas: [ExportArea]? = nil
 }
 
 struct ExportBoard: Codable, Equatable {
@@ -28,6 +34,10 @@ struct ExportBoard: Codable, Equatable {
     // Defaulted (unlike `emoji`) so pre-v2 call sites that predate this field keep compiling;
     // decoding is unaffected either way — a missing JSON key always decodes an Optional as nil.
     var about: String? = nil
+    // M-F: the containing area's name — the import merge key (exact, trimmed), nil = ungrouped.
+    // Optional (the `about` shape): the key is omitted for ungrouped boards and a missing key
+    // decodes nil, so v1–v4 files and area-less boards are indistinguishable, correctly.
+    var area: String? = nil
     var position: Int
     var themeName: String
     var customThemeHex: String?
@@ -73,6 +83,14 @@ struct ExportChecklistItem: Codable, Equatable {
     var isDone: Bool
 }
 
+/// M-F: one exported sidebar area. Array order IS the area order (positions are synthesized
+/// from enumeration at materialize time, like every other position in the format); membership
+/// travels on each board's `area` name reference, not as a name list here.
+struct ExportArea: Codable, Equatable {
+    var name: String
+    var isCollapsed: Bool
+}
+
 // MARK: - Mapping + coding
 
 enum ExportDocument {
@@ -81,17 +99,22 @@ enum ExportDocument {
     /// decode missing fields as nil.
     /// v3 (M-B): + ExportCard.durationMinutes; includesTime is now user-settable.
     /// v4 (M-E): + ExportCard.checklist (Action Items; array order is the row order).
-    static let formatVersion = 4
+    /// v5 (M-F): + top-level areas[] (sidebar groups; array order = area order) + ExportBoard.area
+    /// (merge-by-exact-trimmed-name reference).
+    static let formatVersion = 5
 
-    /// Maps live boards (in position order) to the export envelope. Read-only. `@MainActor`
-    /// because it reads SwiftData model properties. `exportedAt` is injectable for deterministic
-    /// tests; production passes `.now`.
+    /// Maps live boards (in position order) and areas (in position order) to the export envelope.
+    /// Read-only. `@MainActor` because it reads SwiftData model properties. `exportedAt` is
+    /// injectable for deterministic tests; production passes `.now`. `areas:` is deliberately NOT
+    /// defaulted — a defaulted `[]` would let a call site silently export area-less backups.
     @MainActor
-    static func makeEnvelope(boards: [Board], exportedAt: Date = .now) -> ExportEnvelope {
+    static func makeEnvelope(boards: [Board], areas: [Area], exportedAt: Date = .now) -> ExportEnvelope {
         ExportEnvelope(
             formatVersion: formatVersion,
             exportedAt: exportedAt,
-            boards: boards.sorted { $0.position < $1.position }.map(exportBoard)
+            boards: boards.sorted { $0.position < $1.position }.map(exportBoard),
+            areas: areas.sorted { $0.position < $1.position }
+                .map { ExportArea(name: $0.name, isCollapsed: $0.isCollapsed) }
         )
     }
 
@@ -101,6 +124,7 @@ enum ExportDocument {
             name: board.name,
             emoji: board.emoji,
             about: board.about,
+            area: board.area?.name,
             position: board.position,
             themeName: board.themeName,
             customThemeHex: board.customThemeHex,
@@ -184,6 +208,11 @@ enum ExportDocument {
             board.customThemeHex = board.customThemeHex
                 .flatMap(HexColor.parse)
                 .map { HexColor.format(r: $0.r, g: $0.g, b: $0.b) }
+            // M-F: the board's area ref is trimmed to the merge key; whitespace-only → nil.
+            // A dangling ref (no matching areas[] row) is KEPT — materialize find-or-creates it.
+            board.area = board.area
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 }
             board.lists = board.lists.map { list in
                 var list = list
                 list.cards = list.cards.map { card in
@@ -207,6 +236,19 @@ enum ExportDocument {
                 return list
             }
             return board
+        }
+        // M-F area hygiene (pure, idempotent): names trimmed; whitespace-only areas dropped;
+        // duplicates (by the exact trimmed merge key) deduped keeping the FIRST occurrence —
+        // merge-by-name needs one row per key. nil stays nil (a v≤4 file's absent areas are
+        // not rewritten into an empty array — idempotence).
+        result.areas = envelope.areas.map { areas in
+            var seen = Set<String>()
+            return areas.compactMap { area -> ExportArea? in
+                var area = area
+                area.name = area.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !area.name.isEmpty, seen.insert(area.name).inserted else { return nil }
+                return area
+            }
         }
         return result
     }

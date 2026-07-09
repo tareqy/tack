@@ -10,35 +10,36 @@ import SwiftData
 @Suite("ExportDocument")
 struct ExportDocumentTests {
 
-    /// Seeds the standard fixture and runs `body` with the position-ordered boards, keeping the
-    /// backing `TestContainer` (hence its `ModelContainer`) alive for the whole body — otherwise
-    /// the container would deallocate and reset its context, invalidating the `Board` models
-    /// mid-test.
-    private func withStandardBoards(_ body: ([Board]) throws -> Void) rethrows {
+    /// Seeds the standard fixture and runs `body` with the position-ordered boards and areas,
+    /// keeping the backing `TestContainer` (hence its `ModelContainer`) alive for the whole body —
+    /// otherwise the container would deallocate and reset its context, invalidating the `Board`
+    /// models mid-test.
+    private func withStandardBoards(_ body: ([Board], [Area]) throws -> Void) rethrows {
         let env = TestContainer()
         defer { withExtendedLifetime(env) {} }
         FixtureSeeder.seed("standard", context: env.context)
         let boards = (try? env.context.fetch(FetchDescriptor<Board>(sortBy: [SortDescriptor(\.position)]))) ?? []
-        try body(boards)
+        let areas = (try? env.context.fetch(FetchDescriptor<Area>(sortBy: [SortDescriptor(\.position)]))) ?? []
+        try body(boards, areas)
     }
 
-    @Test("formatVersion is 4 and present in the encoded JSON")
-    func formatVersionIsFour() throws {
-        try withStandardBoards { boards in
-            let envelope = ExportDocument.makeEnvelope(boards: boards)
-            #expect(envelope.formatVersion == 4)
+    @Test("formatVersion is 5 and present in the encoded JSON")
+    func formatVersionIsFive() throws {
+        try withStandardBoards { boards, areas in
+            let envelope = ExportDocument.makeEnvelope(boards: boards, areas: areas)
+            #expect(envelope.formatVersion == 5)
 
             let json = String(data: try ExportDocument.encode(envelope), encoding: .utf8)!
             #expect(json.contains("\"formatVersion\""))
-            // The value round-trips as 4 regardless of pretty-print spacing.
-            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 4)
+            // The value round-trips as 5 regardless of pretty-print spacing.
+            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 5)
         }
     }
 
     @Test("round trip preserves board/list/card counts, fields, order, and labels")
     func roundTripPreservesStructureAndValues() throws {
-        try withStandardBoards { boards in
-            let envelope = ExportDocument.makeEnvelope(boards: boards)
+        try withStandardBoards { boards, areas in
+            let envelope = ExportDocument.makeEnvelope(boards: boards, areas: areas)
             let data = try ExportDocument.encode(envelope)
             let decoded = try ExportDocument.decode(data)
 
@@ -79,6 +80,13 @@ struct ExportDocumentTests {
             ])
             #expect(toDo.cards[1].checklist == [], "Call plumber: empty array, not nil, in a fresh export")
 
+            // M-F: the fixture's area round-trips — the top-level areas[] plus the per-board
+            // name ref; ungrouped boards OMIT the key (decodes nil). The byte-equality re-encode
+            // below covers the whole v5 shape.
+            #expect(decoded.areas == [ExportArea(name: "Office", isCollapsed: false)])
+            #expect(decoded.boards[0].area == nil, "Groceries stays ungrouped")
+            #expect(decoded.boards[1].area == "Office")
+
             // Work board: 3 empty default lists.
             let work = decoded.boards[1]
             #expect(work.lists.map(\.name) == ["To Do", "In Progress", "Done"])
@@ -92,8 +100,8 @@ struct ExportDocumentTests {
 
     @Test("dates round-trip as ISO-8601 (due dates exactly; timestamps to the second)")
     func datesRoundTrip() throws {
-        try withStandardBoards { boards in
-            let envelope = ExportDocument.makeEnvelope(boards: boards)
+        try withStandardBoards { boards, areas in
+            let envelope = ExportDocument.makeEnvelope(boards: boards, areas: areas)
             let decoded = try ExportDocument.decode(try ExportDocument.encode(envelope))
 
             // Due dates are start-of-day (zero sub-seconds), so ISO-8601 is lossless: exact equality.
@@ -115,13 +123,15 @@ struct ExportDocumentTests {
 
     @Test("encoded JSON has stable sorted keys and position-ordered boards")
     func stableKeyOrderAndPositionOrder() throws {
-        try withStandardBoards { boards in
-            let json = String(data: try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)), encoding: .utf8)!
+        try withStandardBoards { boards, areas in
+            let json = String(data: try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards, areas: areas)), encoding: .utf8)!
 
-            // `.sortedKeys` → top-level keys alphabetical: boards, exportedAt, formatVersion.
+            // `.sortedKeys` → top-level keys alphabetical: areas, boards, exportedAt, formatVersion.
+            let areasAt = json.range(of: "\"areas\"")!.lowerBound
             let boardsAt = json.range(of: "\"boards\"")!.lowerBound
             let exportedAt = json.range(of: "\"exportedAt\"")!.lowerBound
             let versionAt = json.range(of: "\"formatVersion\"")!.lowerBound
+            #expect(areasAt < boardsAt)
             #expect(boardsAt < exportedAt)
             #expect(exportedAt < versionAt)
 
@@ -138,8 +148,9 @@ struct ExportDocumentTests {
         FixtureSeeder.seed("empty", context: env.context)
         let boards = (try? env.context.fetch(FetchDescriptor<Board>())) ?? []
 
-        let decoded = try ExportDocument.decode(try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)))
+        let decoded = try ExportDocument.decode(try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards, areas: [])))
         #expect(decoded.boards.isEmpty)
-        #expect(decoded.formatVersion == 4)
+        #expect(decoded.areas == [], "the exporter ALWAYS writes the key — empty array, deterministic bytes")
+        #expect(decoded.formatVersion == 5)
     }
 }
