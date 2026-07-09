@@ -25,7 +25,7 @@ import SwiftUI
 /// (not concatenating with) the container's, plus the Button-to-StaticText demotion; the
 /// concatenation description is corrected here — mechanism INFERRED to be an AX-hosting
 /// collision/overwrite, not directly observed as concatenation. Either way, the load-bearing
-/// fact holds either way: neither `area-<name>` nor `area-toggle-<name>` is reliably queryable
+/// fact holds: neither `area-<name>` nor `area-toggle-<name>` is reliably queryable
 /// from a `header:`, and the chevron is never clickable. Rows preserve their hosted AX subtree
 /// (every `board-<name>` row proves it), so the header rides as a row, styled like a sidebar
 /// header and `.selectionDisabled` at the call site. Restoration to the shipped row-based shape
