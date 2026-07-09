@@ -174,4 +174,19 @@ enum AccessibilityID {
     static let calendarNoDateHeader = "calendar-nodate-header"
     /// A No-Date rail row (`.contain` container, the `listRow(_:)` shape): "calrow-<title>".
     static func calendarNoDateRow(_ title: String) -> String { "calrow-\(title)" }
+
+    // MARK: - M-E: checklists (Action Items)
+
+    /// Card-detail checklist row controls. INDEX-keyed — the app's only index-keyed ids — because
+    /// staged rows are anonymous until saved (a nil-id draft has no UUID and text is user-mutable
+    /// mid-test). Index = the row's position in the staged drafts array, stable within a sheet
+    /// (v1 has no reorder UI).
+    static func checkItemToggle(_ index: Int) -> String { "checkitem-toggle-\(index)" }
+    static func checkItemText(_ index: Int) -> String { "checkitem-text-\(index)" }
+    static func checkItemDelete(_ index: Int) -> String { "checkitem-delete-\(index)" }
+    static let checkItemAdd = "checkitem-add"
+    /// The card face's done/total fraction — a representation Text (the `cardLabels`/DueDateBadge
+    /// pattern) whose value is "<done>/<total>". Prefixed "checklist-", never "card-"
+    /// (`cardIdentifiersByPosition` counts `BEGINSWITH "card-"`). Present only when total > 0.
+    static func cardChecklist(_ title: String) -> String { "checklist-\(title)" }
 }

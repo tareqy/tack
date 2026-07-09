@@ -370,6 +370,110 @@ final class CardDetailUITests: TackUITestCase {
         XCTAssertFalse(app.windows.buttons["Cancel"].exists, "delete must not present a confirmation dialog")
     }
 
+    // MARK: - M-E: Action Items
+
+    /// Add two items on the checklist-free "Book flights" (it has NO meta line at all — labels
+    /// none, due date none — so this also proves the fraction ALONE creates the meta line),
+    /// toggle one done, Save, assert the face fraction, reopen (drafts seed from the card),
+    /// and persist across relaunch.
+    func testActionItemsAddToggleSavePersists() {
+        launch(fixture: "standard")
+
+        openDetailViaBodyDoubleClick("Book flights")
+        XCTAssertTrue(detailSheet.staticTexts["Action Items"].exists,
+                      "section header should read Action Items, below Brief")
+
+        element(AccessibilityID.checkItemAdd).click()
+        let firstField = element(AccessibilityID.checkItemText(0))
+        XCTAssertTrue(firstField.waitForExistence(timeout: timeout))
+        firstField.click()
+        firstField.typeText("Pack bags")
+
+        element(AccessibilityID.checkItemAdd).click()
+        let secondField = element(AccessibilityID.checkItemText(1))
+        XCTAssertTrue(secondField.waitForExistence(timeout: timeout))
+        secondField.click()
+        secondField.typeText("Check passport")
+
+        element(AccessibilityID.checkItemToggle(0)).click()
+
+        hittableButton("Save").click()
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+
+        let fraction = element(AccessibilityID.cardChecklist("Book flights"))
+        XCTAssertTrue(poll(timeout: timeout) { fraction.exists },
+                      "the fraction should appear after Save — it alone creates the meta line")
+        XCTAssertEqual(fraction.value as? String, "1/2")
+
+        openDetailViaBodyDoubleClick("Book flights")
+        XCTAssertEqual(element(AccessibilityID.checkItemText(0)).value as? String, "Pack bags",
+                       "drafts must seed from the persisted rows on reopen")
+        XCTAssertEqual(element(AccessibilityID.checkItemText(1)).value as? String, "Check passport")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+
+        relaunchPreservingStore()
+
+        let fractionAfter = element(AccessibilityID.cardChecklist("Book flights"))
+        XCTAssertTrue(fractionAfter.waitForExistence(timeout: timeout),
+                      "checklist should persist across relaunch")
+        XCTAssertEqual(fractionAfter.value as? String, "1/2")
+    }
+
+    /// The seeded fixture card's face fraction (asserted here because NO other test opens Return
+    /// library books' sheet — that's exactly why it carries the fixture checklist), plus the
+    /// Cancel contract: staged toggle + delete + add must all be discarded.
+    func testActionItemsCancelDiscardsAndFixtureFraction() {
+        launch(fixture: "standard")
+
+        let fraction = element(AccessibilityID.cardChecklist("Return library books"))
+        XCTAssertTrue(fraction.waitForExistence(timeout: timeout),
+                      "the fixture seeds 3 items (2 done) on Return library books")
+        XCTAssertEqual(fraction.value as? String, "2/3")
+
+        openDetailViaBodyDoubleClick("Return library books")
+        XCTAssertEqual(element(AccessibilityID.checkItemText(0)).value as? String, "Renew library card",
+                       "drafts seed in position order")
+        element(AccessibilityID.checkItemToggle(2)).click()   // stage: done the not-done row
+        element(AccessibilityID.checkItemDelete(0)).click()   // stage: delete the first row
+        element(AccessibilityID.checkItemAdd).click()         // stage: add a row (now index 2)
+        let newField = element(AccessibilityID.checkItemText(2))
+        XCTAssertTrue(newField.waitForExistence(timeout: timeout))
+        newField.click()
+        newField.typeText("Staged only")
+
+        hittableButton("Cancel").click()
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+
+        XCTAssertEqual(fraction.value as? String, "2/3",
+                       "Cancel must discard every staged checklist change")
+    }
+
+    /// M-0 oracle, extended (the plan's sheet-layout resolution): 5 staged rows must NOT push
+    /// the due-date controls off the fixed-ideal-height sheet — the rows live in a bounded,
+    /// content-sized scroller, never in the flexible-layout negotiation.
+    func testLongChecklistKeepsDueDateHittable() {
+        launch(fixture: "standard")
+
+        openDetailViaBodyDoubleClick("Call plumber")
+        for _ in 0..<5 {
+            element(AccessibilityID.checkItemAdd).click()
+        }
+        XCTAssertTrue(element(AccessibilityID.checkItemText(4)).waitForExistence(timeout: timeout),
+                      "five staged rows should render")
+
+        let today = element(AccessibilityID.dueQuickToday)
+        XCTAssertTrue(today.exists, "due-date quick buttons should exist below the checklist")
+        XCTAssertTrue(today.isHittable,
+                      "a long checklist must stay bounded — never push the due-date section off-screen")
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+        // Belt-and-suspenders: even if these empty rows HAD been saved, whitespace-only drafts
+        // drop at the store; either way the face must show no fraction.
+        XCTAssertFalse(element(AccessibilityID.cardChecklist("Call plumber")).exists)
+    }
+
     // MARK: - Open helper
 
     /// Opens the detail sheet by double-clicking the card BODY at dx 0.9 — far right of the row,

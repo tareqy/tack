@@ -59,7 +59,9 @@ struct CardView: View {
         return LabelColor.allCases.filter { owned.contains($0) }
     }
 
-    private var hasMetaLine: Bool { !sortedLabelColors.isEmpty || card.dueDate != nil }
+    private var hasMetaLine: Bool {
+        !sortedLabelColors.isEmpty || card.dueDate != nil || !card.checklistItems.isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -135,6 +137,7 @@ struct CardView: View {
         HStack(spacing: 6) {
             labelDots
             Spacer(minLength: 0)
+            checklistFraction
             if let dueDate = card.dueDate {
                 DueDateBadge(card: card, dueDate: dueDate)
             }
@@ -161,6 +164,32 @@ struct CardView: View {
             .accessibilityRepresentation {
                 Text(sortedLabelColors.map(\.rawValue).joined(separator: ","))
                     .accessibilityIdentifier(AccessibilityID.cardLabels(card.title))
+            }
+        }
+    }
+
+    /// M-E: the Action Items "done/total" fraction — present only when the card HAS items.
+    /// Quiet secondary styling (it's a progress note, not an urgency signal like the badge).
+    @ViewBuilder
+    private var checklistFraction: some View {
+        let total = card.checklistItems.count
+        if total > 0 {
+            let done = card.checklistItems.filter(\.isDone).count
+            HStack(spacing: 3) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 9))
+                Text("\(done)/\(total)")
+                    .font(.caption2)
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.secondary)
+            // The labelDots/DueDateBadge pattern: a representation Text whose TEXT is the machine
+            // payload — plain .accessibilityValue on SwiftUI shapes reads EMPTY under XCUITest on
+            // macOS (the M6 finding). measuredRowHeight/DropMath need no change: the fraction
+            // shares the existing meta line, so row height is untouched.
+            .accessibilityRepresentation {
+                Text("\(done)/\(total)")
+                    .accessibilityIdentifier(AccessibilityID.cardChecklist(card.title))
             }
         }
     }

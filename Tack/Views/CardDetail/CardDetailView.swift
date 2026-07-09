@@ -25,6 +25,7 @@ struct CardDetailView: View {
     @State private var dueDate: Date?
     @State private var includesTime: Bool
     @State private var durationMinutes: Int?
+    @State private var checklistDrafts: [ChecklistDraft]
 
     init(card: Card, store: BoardStore, onDelete: @escaping () -> Void) {
         self.card = card
@@ -36,6 +37,7 @@ struct CardDetailView: View {
         _dueDate = State(initialValue: card.dueDate)
         _includesTime = State(initialValue: card.includesTime)
         _durationMinutes = State(initialValue: card.durationMinutes)
+        _checklistDrafts = State(initialValue: ChecklistDraft.drafts(of: card))
     }
 
     var body: some View {
@@ -76,6 +78,8 @@ struct CardDetailView: View {
                         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false))
                         .accessibilityIdentifier(AccessibilityID.cardDetailDescriptionField)
                 }
+
+                actionItemsSection
 
                 LabelPicker(selected: $labels)
                 DueDatePicker(dueDate: $dueDate, includesTime: $includesTime, durationMinutes: $durationMinutes)
@@ -135,9 +139,109 @@ struct CardDetailView: View {
             dueDate: dueDate,
             includesTime: includesTime,
             durationMinutes: durationMinutes,
-            // M-E Task 1 bridge: identity payload (no sheet UI for items yet — Task 3 swaps this
-            // for the staged checklistDrafts). An identity array diffs to "no checklist change".
-            checklist: ChecklistDraft.drafts(of: card)
+            checklist: checklistDrafts // staged; the store drops whitespace-only drafts
         )
+    }
+
+    // MARK: - M-E: Action Items (staged, like every other sheet field)
+
+    private static let checklistRowHeight: CGFloat = 28
+    /// Rows visible without scrolling. WHY a bounded scroller at all: the Brief editor is the
+    /// sheet's ONE flexible element (maxHeight .infinity + layoutPriority(1), floor 120pt) — an
+    /// UNbounded checklist would push Labels/Due Date/footer off the fixed-ideal-height sheet,
+    /// the exact bug class M-0's testLongBriefScrollsInsideEditorNotSheet pins for the editor.
+    /// A FIXED, content-sized height keeps this section out of the flexible-layout negotiation
+    /// entirely, and the CAP is deliberately small (4 rows ≈ 112pt): with an empty Brief the
+    /// editor sits well above its floor, so the section compresses the EDITOR, never the pinned
+    /// due-date controls (testLongChecklistKeepsDueDateHittable is the regression gate). Long
+    /// Brief + long checklist at DEFAULT size is the one accepted squeeze — the sheet is
+    /// user-resizable since M-0. With ≤4 rows nothing ever scrolls, so row clicks/typing are
+    /// unaffected. NOT a native List (nested-scroll + .onMove pitfalls) — a plain NON-lazy
+    /// ForEach in a plain ScrollView (non-lazy so below-the-fold rows still exist for AX queries).
+    private static let checklistVisibleRowCap = 4
+
+    private var stagedDoneCount: Int { checklistDrafts.filter(\.isDone).count }
+
+    private var checklistRowsHeight: CGFloat {
+        CGFloat(min(checklistDrafts.count, Self.checklistVisibleRowCap)) * Self.checklistRowHeight
+    }
+
+    private var actionItemsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // ONE header line: title + staged count + inline Add — an EMPTY checklist costs the
+            // sheet ~20pt total, which is what keeps the pre-M-E layout tests green.
+            HStack(spacing: 6) {
+                Text("Action Items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !checklistDrafts.isEmpty {
+                    // Staged count — live while editing, matching the face fraction after Save.
+                    Text("\(stagedDoneCount)/\(checklistDrafts.count)")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    checklistDrafts.append(ChecklistDraft(id: nil, text: "", isDone: false))
+                    // Deliberately NO focus move onto the new row: .focused()/FocusState bindings
+                    // are the launch-focus pitfall's surface (they killed the keyboard command
+                    // surface once already — see CLAUDE.md). The user clicks into the row.
+                    // Accepted v1.
+                } label: {
+                    Label("Add Item", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .accessibilityIdentifier(AccessibilityID.checkItemAdd)
+            }
+            if !checklistDrafts.isEmpty {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Index identity — deliberate: new drafts have nil ids (ChecklistDraft is
+                        // not Identifiable), and v1 has no reorder UI, so the index is stable for
+                        // the sheet's lifetime and doubles as the AX-id key.
+                        ForEach(checklistDrafts.indices, id: \.self) { index in
+                            checklistRow(index)
+                        }
+                    }
+                }
+                .frame(height: checklistRowsHeight)
+            }
+        }
+    }
+
+    private func checklistRow(_ index: Int) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                checklistDrafts[index].isDone.toggle()
+            } label: {
+                Image(systemName: checklistDrafts[index].isDone ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(checklistDrafts[index].isDone ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(checklistDrafts[index].isDone ? "Mark as not done" : "Mark as done")
+            .accessibilityLabel(checklistDrafts[index].isDone ? "Done" : "Not Done")
+            .accessibilityIdentifier(AccessibilityID.checkItemToggle(index))
+
+            TextField("Action item", text: $checklistDrafts[index].text)
+                .textFieldStyle(.plain)
+                // MANDATORY (CLAUDE.md text-input pitfall): the first NEW text inputs since M-A.
+                // Without this, ⌘⌫/⌘N/every menu shortcut fires while the user types an item.
+                .reportsTextInputFocus()
+                .accessibilityIdentifier(AccessibilityID.checkItemText(index))
+
+            Button {
+                checklistDrafts.remove(at: index)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove item")
+            .accessibilityLabel("Remove Item")
+            .accessibilityIdentifier(AccessibilityID.checkItemDelete(index))
+        }
+        .frame(height: Self.checklistRowHeight)
     }
 }
