@@ -212,7 +212,14 @@ final class BoardStore {
     /// whitespace-only name (the sheet disables Save; this is the store backstop).
     /// M-F spike verdict GREEN (AreaUndoOnDiskTests, 3/3 on-disk runs): undo/redo of this
     /// relationship write is integrity-safe — the suite stays in the repo as the regression
-    /// sentinel for exactly this claim.
+    /// sentinel for exactly this claim. M-F FINAL-REVIEW EXTENSION (2026-07-09): the original
+    /// spike's leg C only ever moved an UNGROUPED board into a new area (a single-collection
+    /// write); the user-reachable "Move to Area ▸ New Area…" on an ALREADY-GROUPED board is the
+    /// two-inverse-collection shape one level up (the moveCard/leg-B hazard: the source area's
+    /// `boards` AND the new area's `boards` both rewritten in one group). Re-probed with
+    /// `createAreaMovingGroupedBoardUndoRedoIntegrity` — 3/3 on-disk runs GREEN
+    /// (`.build/mf-final-legC2-{1,2,3}.log`): no fallback needed, this method keeps its single
+    /// `withUndoGroup` form for both shapes, and the sentinel now covers both.
     @discardableResult
     func createArea(named name: String, moving board: Board?) -> Area? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

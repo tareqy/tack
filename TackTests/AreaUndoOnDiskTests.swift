@@ -33,6 +33,15 @@ import SwiftData
 /// three claims: silent membership loss after undo/redo is the exact mode it is designed to
 /// catch before any user does — an OS update to SwiftData's undo snapshotting is the likeliest
 /// regression vector.
+///
+/// M-F FINAL-REVIEW EXTENSION (2026-07-09): the whole-branch review found leg C's original probe
+/// (`createAreaMovingBoardUndoRedo`) only ever moved an UNGROUPED board — a nil→newArea single-
+/// collection write — leaving the user-reachable "Move to Area ▸ New Area…" gesture on an
+/// ALREADY-GROUPED board (an area→newArea TWO-inverse-collection write, leg B's own hazard shape
+/// one level up) unspiked. `createAreaMovingGroupedBoardUndoRedoIntegrity` closes that gap: 3/3
+/// on-disk runs GREEN (`.build/mf-final-legC2-{1,2,3}.log`) — undo restores the source area's
+/// membership EXACTLY and redo re-applies both the departure and the arrival. `createArea` keeps
+/// its single `withUndoGroup` form for both shapes; no fallback was needed.
 @MainActor
 @Suite("Area relationship-undo on-disk spike", .serialized)
 struct AreaUndoOnDiskTests {
@@ -76,6 +85,47 @@ struct AreaUndoOnDiskTests {
         #expect(restoredWork.sortedBoards.map(\.persistentModelID) == [gammaPID],
                 "redo must restore MEMBERSHIP, not just the area row — the silent-drop oracle")
         _ = work
+    }
+
+    /// M-F FINAL-REVIEW EXTENSION (2026-07-09): the Task 0 leg C probe only ever moved an
+    /// UNGROUPED board (gamma) into a brand-new area — a nil→newArea single-collection write.
+    /// This probes the shape leg B's own findings warn about one level up: moving a board that
+    /// is ALREADY in another area (alpha, seeded into "Home") is an area→newArea TWO-inverse-
+    /// collection write (`home.boards` loses alpha, `work.boards` gains it) under the SAME
+    /// automatic-registration `createArea` uses. User-reachable via SidebarView's "Move to
+    /// Area ▸ New Area…" offered on a grouped board's row.
+    @Test("leg C: createArea moving a board ALREADY IN ANOTHER AREA — undo restores prior membership EXACTLY; redo re-applies")
+    func createAreaMovingGroupedBoardUndoRedoIntegrity() throws {
+        let env = try OnDiskTestStore(directoryPrefix: "TackAreaSpike")
+        defer { env.tearDown() }
+        let (home, alpha, beta, _) = try seed(env)
+        let alphaPID = alpha.persistentModelID
+        let betaPID = beta.persistentModelID
+
+        let work = try #require(env.store.createArea(named: "Work", moving: alpha))
+        #expect(home.sortedBoards.map(\.persistentModelID) == [betaPID], "alpha leaves home")
+        #expect(work.sortedBoards.map(\.persistentModelID) == [alphaPID], "alpha joins the new area")
+        #expect(try env.context.fetchCount(FetchDescriptor<Board>()) == 3)
+
+        env.undoManager.undo()
+        #expect(try env.context.fetchCount(FetchDescriptor<Area>()) == 1, "the Work area insert must revert")
+        #expect(home.sortedBoards.map(\.persistentModelID) == [alphaPID, betaPID],
+                "undo must restore home's membership EXACTLY — the silent-drop oracle one level up from leg B")
+        #expect(try env.context.fetchCount(FetchDescriptor<Board>()) == 3, "no board may vanish")
+
+        env.undoManager.redo()
+        #expect(try env.context.fetchCount(FetchDescriptor<Area>()) == 2)
+        let restoredWork = try #require(env.store.fetchAreasForTesting().first { $0.name == "Work" })
+        #expect(restoredWork.sortedBoards.map(\.persistentModelID) == [alphaPID],
+                "redo must restore MEMBERSHIP, not just the area row")
+        #expect(home.sortedBoards.map(\.persistentModelID) == [betaPID],
+                "redo must also re-apply alpha's departure from home")
+
+        env.undoManager.undo()
+        #expect(try env.context.fetchCount(FetchDescriptor<Area>()) == 1)
+        #expect(home.sortedBoards.map(\.persistentModelID) == [alphaPID, betaPID],
+                "a second undo must restore membership exactly again")
+        #expect(try env.context.fetchCount(FetchDescriptor<Board>()) == 3)
     }
 
     // MARK: - Leg B: setArea — the two-inverse-collections reassignment (the moveCard shape)

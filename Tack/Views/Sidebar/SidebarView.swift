@@ -101,10 +101,12 @@ struct SidebarView: View {
         ForEach(areas) { area in
             Section {
                 // The header rides as the section's FIRST ROW, deliberately NOT `header:` —
-                // Section-header hosting flattens its AX subtree under XCUITest (child ids
-                // concatenated into one StaticText, chevron Button gone as an interactive
-                // element; see AreaHeaderView's HOSTING note). `.selectionDisabled` keeps the
-                // untagged row out of the List's selection machinery.
+                // Section-header hosting flattens its AX subtree under XCUITest (the observed
+                // evidence: ONE StaticText survives, carrying only the chevron's own id
+                // area-toggle-<name>; the container's area-<name> id is absent and the chevron
+                // Button is demoted to non-interactive; see AreaHeaderView's HOSTING note).
+                // `.selectionDisabled` keeps the untagged row out of the List's selection
+                // machinery.
                 AreaHeaderView(area: area, store: store,
                                onRename: { renamingArea = area },
                                onDelete: { areaPendingDeletion = area })
