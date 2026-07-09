@@ -148,4 +148,30 @@ enum AccessibilityID {
     /// The row's label-dots representation Text (the `cardLabels` pattern, list-mode flavored —
     /// distinct prefix so a global identifier search stays unambiguous).
     static func listRowLabels(_ title: String) -> String { "listrow-labels-\(title)" }
+
+    // MARK: - M-D: calendar view
+
+    /// The month header ("July 2026" visible). Machine value is POSIX "yyyy-MM" via an
+    /// `.accessibilityRepresentation` Text carrying this id (the `boardThemeValue`/`DueDateBadge`
+    /// pattern) — tests assert the displayed month without locale-dependent month names.
+    static let calendarMonthTitle = "calendar-month-title"
+    static let calendarPrevButton = "calendar-prev"
+    static let calendarTodayButton = "calendar-today"
+    static let calendarNextButton = "calendar-next"
+    /// A day cell OF THE DISPLAYED MONTH: "calendar-day-<yyyy-MM-dd>" (POSIX, LOCAL time zone —
+    /// the DueDateBadge.isoDateFormatter rationale). An `.accessibilityElement(children:
+    /// .contain)` container (the proven `card(_:)` shape), so chip ids inside stay queryable via
+    /// `cell.descendants`. Dimmed adjacent-month cells get NO id: they are non-interactive, and a
+    /// date-keyed id on them would let a boundary-week test grab the wrong month's cell.
+    static func calendarDay(_ isoDay: String) -> String { "calendar-day-\(isoDay)" }
+    /// A day cell's compact card chip. Prefixed "calchip-", never "card-"
+    /// (`cardIdentifiersByPosition` counts `BEGINSWITH "card-"`). The id lives on the chip's
+    /// representation Text, whose value is "<HH:mm>|<title>" for timed cards (POSIX HH:mm — the
+    /// DueDateBadge wire-time grammar) and "<title>" otherwise.
+    static func calendarChip(_ title: String) -> String { "calchip-\(title)" }
+    /// The No-Date rail's header HStack — a SIBLING of the rail rows, never a container around
+    /// them (the `listSection` discipline).
+    static let calendarNoDateHeader = "calendar-nodate-header"
+    /// A No-Date rail row (`.contain` container, the `listRow(_:)` shape): "calrow-<title>".
+    static func calendarNoDateRow(_ title: String) -> String { "calrow-\(title)" }
 }

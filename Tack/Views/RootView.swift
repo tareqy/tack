@@ -516,12 +516,7 @@ struct RootView: View {
             case .list:
                 ListBoardView(board: selectedBoard, store: store)
             case .calendar:
-                // M-D Task 1: temporary — the calendar view lands in Task 2 (CalendarBoardView);
-                // until then calendar mode renders the board canvas so the seam (third segment,
-                // menu item, persistence through the existing map, marker) ships green without
-                // the view. KNOWN + temporary: view-mode-value honestly reads "calendar" while
-                // the canvas still renders.
-                BoardView(board: selectedBoard, store: store)
+                CalendarBoardView(board: selectedBoard, store: store)
             case .board:
                 BoardView(board: selectedBoard, store: store)
             }
