@@ -88,4 +88,32 @@ struct CascadeDeleteTests {
         let items = (try? env.context.fetch(FetchDescriptor<ChecklistItem>())) ?? []
         #expect(items.isEmpty, "no orphaned checklist rows after a list delete")
     }
+
+    @Test("deleteArea nullifies its boards — boards survive, ungrouped (M-F)")
+    func deleteAreaNullifiesBoards() throws {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let area = try #require(env.store.createArea(named: "Home", moving: board))
+
+        env.store.deleteArea(area)
+
+        let boards = (try? env.context.fetch(FetchDescriptor<Board>())) ?? []
+        #expect(boards.count == 1, "nullify must never delete boards")
+        #expect(boards.first?.area == nil, "released to ungrouped")
+        #expect(((try? env.context.fetch(FetchDescriptor<Area>())) ?? []).isEmpty)
+    }
+
+    @Test("deleteBoard inside an area leaves the area intact (no reverse cascade) (M-F)")
+    func deleteBoardLeavesAreaIntact() throws {
+        let env = TestContainer()
+        let stays = env.store.createBoard(name: "Stays", emoji: nil)
+        let goes = env.store.createBoard(name: "Goes", emoji: nil)
+        let area = try #require(env.store.createArea(named: "Home", moving: stays))
+        env.store.setArea(goes, to: area)
+
+        env.store.deleteBoard(goes)
+
+        #expect(((try? env.context.fetch(FetchDescriptor<Area>())) ?? []).count == 1)
+        #expect(area.sortedBoards.map(\.name) == ["Stays"], "membership shrinks; the area survives")
+    }
 }

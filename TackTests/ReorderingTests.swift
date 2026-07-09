@@ -182,4 +182,38 @@ struct ReorderingTests {
         let result = Reordering.movedWithin([UUID](), fromOffsets: IndexSet(integer: 0), toOffset: 0)
         #expect(result.isEmpty)
     }
+
+    // MARK: - movedWithinSubset (M-F)
+
+    @Test("movedWithinSubset reorders members among their own slots; non-members keep exact indices")
+    func movedWithinSubsetReordersMembersAmongTheirSlots() {
+        // Slots: a(0) X(1) b(2) c(3) Y(4). Section = [a,b,c]; move c (offset 2) to front (offset 0).
+        let result = Reordering.movedWithinSubset(["a", "X", "b", "c", "Y"],
+                                                  subset: ["a", "b", "c"],
+                                                  fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        #expect(result == ["c", "X", "a", "b", "Y"],
+                "members permute across their OWN slots (0,2,3); X and Y never move")
+    }
+
+    @Test("movedWithinSubset with the full set matches movedWithin(fromOffsets:toOffset:)")
+    func movedWithinSubsetFullSetMatchesMovedWithin() {
+        let items = ["a", "b", "c", "d"]
+        for from in 0..<4 {
+            for to in 0...4 {
+                let viaSubset = Reordering.movedWithinSubset(items, subset: Set(items),
+                                                             fromOffsets: IndexSet(integer: from), toOffset: to)
+                let direct = Reordering.movedWithin(items, fromOffsets: IndexSet(integer: from), toOffset: to)
+                #expect(viaSubset == direct, "full-set subsequence reorder IS the flat reorder (from \(from) to \(to))")
+            }
+        }
+    }
+
+    @Test("movedWithinSubset is total: empty or foreign subsets and out-of-range offsets are the identity")
+    func movedWithinSubsetEmptyOrForeignSubsetIsIdentity() {
+        let items = ["a", "b", "c"]
+        #expect(Reordering.movedWithinSubset(items, subset: [], fromOffsets: IndexSet(integer: 0), toOffset: 2) == items)
+        #expect(Reordering.movedWithinSubset(items, subset: ["z"], fromOffsets: IndexSet(integer: 0), toOffset: 1) == items)
+        #expect(Reordering.movedWithinSubset(items, subset: ["a", "c"], fromOffsets: IndexSet(integer: 9), toOffset: 0) == items,
+                "out-of-range source offsets are dropped (the movedWithin convention)")
+    }
 }

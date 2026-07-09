@@ -39,6 +39,23 @@ enum Reordering {
         return result
     }
 
+    /// M-F: reorders the members of `subset` among the SLOTS they currently occupy in `items`,
+    /// leaving every non-member at its exact index — the sectioned-sidebar reorder primitive
+    /// (Board.position stays ONE global sequence; a per-area `.onMove` hands offsets into ITS
+    /// section's rows, i.e. into `items.filter { subset.contains($0) }`, using the same SwiftUI
+    /// pre-removal convention as `movedWithin(fromOffsets:toOffset:)`). Total: out-of-range
+    /// offsets follow that overload's rules, a subset covering all of `items` IS that overload
+    /// (pinned by ReorderingTests), and foreign subset members are simply never encountered.
+    static func movedWithinSubset<Element: Hashable>(
+        _ items: [Element], subset: Set<Element>,
+        fromOffsets source: IndexSet, toOffset destination: Int
+    ) -> [Element] {
+        let members = items.filter { subset.contains($0) }
+        let reordered = movedWithin(members, fromOffsets: source, toOffset: destination)
+        var iterator = reordered.makeIterator()
+        return items.map { subset.contains($0) ? (iterator.next() ?? $0) : $0 }
+    }
+
     /// Returns the array with the element at `index` removed. Out-of-range `index` is a no-op.
     static func removed<Element>(_ items: [Element], at index: Int) -> [Element] {
         guard items.indices.contains(index) else { return items }

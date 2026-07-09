@@ -118,7 +118,7 @@ struct UndoRedoTests {
             [a, b, c].sorted { $0.position < $1.position }.map(\.name)
         }
 
-        env.store.moveBoards(fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        env.store.moveBoards(fromOffsets: IndexSet(integer: 2), toOffset: 0, in: nil)
         #expect(orderedNames() == ["C", "A", "B"])
 
         env.undoManager?.undo()

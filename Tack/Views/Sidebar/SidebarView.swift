@@ -24,7 +24,9 @@ struct SidebarView: View {
     private var moveHandler: ((IndexSet, Int) -> Void)? {
         guard filterQuery.isEmpty else { return nil }
         return { source, destination in
-            store.moveBoards(fromOffsets: source, toOffset: destination)
+            // M-F Task 1 bridge: the sidebar is still flat and no UI can create an area yet, so
+            // every board is in the nil section — Task 3 replaces this with per-section handlers.
+            store.moveBoards(fromOffsets: source, toOffset: destination, in: nil)
         }
     }
 

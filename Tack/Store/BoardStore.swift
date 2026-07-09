@@ -178,15 +178,21 @@ final class BoardStore {
         return boards.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 
-    /// B-06: reorders boards in sidebar (position-sorted) order using SwiftUI's `.onMove`
-    /// convention — `SidebarView` passes its handler arguments straight through, so no index
-    /// translation exists anywhere. Renumbers ALL boards to a contiguous 0..<n (self-healing
-    /// any gaps left by `deleteBoard`, which doesn't renumber). Identity moves return BEFORE
-    /// opening an undo group, so "drop it back where it was" never eats a ⌘Z step.
-    func moveBoards(fromOffsets source: IndexSet, toOffset destination: Int) {
+    /// B-06 + M-F: reorders boards within ONE sidebar section — `area` nil = the ungrouped
+    /// section. `source`/`destination` are SwiftUI `.onMove` offsets INTO THAT SECTION's rows
+    /// (the position-sorted members), passed straight through by `SidebarView` — the index
+    /// convention still lives in exactly one place (`Reordering.movedWithinSubset`), nowhere in
+    /// the view. Renumbers ALL boards to a contiguous global 0..<n (self-healing any gaps left
+    /// by `deleteBoard`, as before); non-members keep their exact slots. Identity moves return
+    /// BEFORE opening an undo group, so "drop it back where it was" never eats a ⌘Z step.
+    /// `in:` is deliberately NOT defaulted — a defaulted nil would silently reinterpret a
+    /// flat-offset call as "the ungrouped section"; every call site states its section.
+    func moveBoards(fromOffsets source: IndexSet, toOffset destination: Int, in area: Area?) {
         let boards = fetchBoards().sorted { $0.position < $1.position }
         let ids = boards.map(\.id)
-        let newOrder = Reordering.movedWithin(ids, fromOffsets: source, toOffset: destination)
+        let sectionIDs = Set(boards.filter { $0.area?.id == area?.id }.map(\.id))
+        let newOrder = Reordering.movedWithinSubset(ids, subset: sectionIDs,
+                                                    fromOffsets: source, toOffset: destination)
         guard newOrder != ids else { return }
         withUndoGroup("Move Board") {
             applyPositions(newOrder, to: boards)
@@ -250,6 +256,31 @@ final class BoardStore {
     func deleteArea(_ area: Area) {
         withUndoGroup("Delete Area") {
             context.delete(area)
+            save()
+        }
+    }
+
+    /// M-F: renames an area in one undo step, trimming to the merge key. A no-change rename
+    /// opens no group and does not save (the editBoard discipline). Name-collision prevention
+    /// is the SHEET's job (AreaNameSheet disables Save on an exact-match collision) — the store
+    /// trusts its caller here, exactly like renameBoard.
+    func renameArea(_ area: Area, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, area.name != trimmed else { return }
+        withUndoGroup("Rename Area") {
+            area.name = trimmed
+            save()
+        }
+    }
+
+    /// M-F: toggles an area's collapsed display state — the `setCollapsed(list)` precedent:
+    /// one undo step named for the direction, a pure display flag, never touches positions.
+    /// Also the write path of RootView's auto-expand (design (c)) — the no-op guard is what
+    /// makes every selection change onto an already-visible board free.
+    func setAreaCollapsed(_ area: Area, _ collapsed: Bool) {
+        guard area.isCollapsed != collapsed else { return }
+        withUndoGroup(collapsed ? "Collapse Area" : "Expand Area") {
+            area.isCollapsed = collapsed
             save()
         }
     }
