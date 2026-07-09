@@ -69,6 +69,31 @@ struct CalendarRescheduleTests {
                                                      onto: date(2026, 7, 10, 11, 45),
                                                      calendar: calendar) == date(2026, 7, 10, 14, 0))
     }
+
+    @Test("DST spring-forward gap: a 02:30 card dropped on the US transition day rolls forward to 03:00, not start-of-day")
+    func dstSpringForwardGapRollsForward() {
+        // Dedicated DST-observing calendar — the suite's UTC calendar has no transitions.
+        var nyCal = Calendar(identifier: .gregorian)
+        nyCal.timeZone = TimeZone(identifier: "America/New_York")!
+        func nyDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+            nyCal.date(from: DateComponents(year: year, month: month, day: day,
+                                            hour: hour, minute: minute))!
+        }
+
+        // 2026-03-08 is the US spring-forward day (02:00 EST → 03:00 EDT): 02:30 does not
+        // exist on the target day. Verified empirically on this platform: `bySettingHour`
+        // does NOT return nil for the gap — Foundation's `.nextTime` matching policy rolls
+        // forward to the first valid instant, 03:00 EDT. This test pins that roll-forward;
+        // the implementation's `?? targetDay` start-of-day fallback is NOT the DST path
+        // (a nil that never occurs here) — documented in the source doc comment.
+        let result = CalendarReschedule.retargetedDueDate(original: nyDate(2026, 3, 1, 2, 30),
+                                                          includesTime: true,
+                                                          onto: nyDate(2026, 3, 8),
+                                                          calendar: nyCal)
+        #expect(result == nyDate(2026, 3, 8, 3, 0))
+        #expect(result != nyCal.startOfDay(for: nyDate(2026, 3, 8)),
+                "the gap must roll the time forward, not silently drop it to start-of-day")
+    }
 }
 
 /// M-D: the month grid's cell math. Weekday facts used below (verifiable by hand from
@@ -145,6 +170,18 @@ struct CalendarMonthGridTests {
                             "\(year)-\(month) fw\(firstWeekday): every in-month day exactly once")
                     #expect(cal.component(.weekday, from: days.first!.date) == firstWeekday,
                             "\(year)-\(month) fw\(firstWeekday): grid opens on the calendar's first weekday")
+
+                    // Symmetry breakers: the three invariants above all survive a uniform
+                    // ±7-day (whole-week) window shift — these pin the window to the month.
+                    let monthLast = cal.date(byAdding: .day, value: expectedCount - 1, to: anchor)!
+                    let leadingFillers = cal.dateComponents([.day], from: days.first!.date, to: anchor).day!
+                    let trailingFillers = cal.dateComponents([.day], from: monthLast, to: days.last!.date).day!
+                    #expect(leadingFillers >= 0 && leadingFillers < 7,
+                            "\(year)-\(month) fw\(firstWeekday): the 1st falls inside the FIRST week row")
+                    #expect(trailingFillers >= 0 && trailingFillers < 7,
+                            "\(year)-\(month) fw\(firstWeekday): the last day falls inside the LAST week row")
+                    #expect(Set(days.map(\.date)).count == days.count,
+                            "\(year)-\(month) fw\(firstWeekday): no duplicate cell dates")
                 }
             }
         }

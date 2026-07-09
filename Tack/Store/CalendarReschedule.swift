@@ -17,6 +17,14 @@ enum CalendarReschedule {
     ///   Thursday means 14:00 Thursday), via `bySettingHour` on the target's start-of-day.
     ///   Seconds are normalized to :00 — every UI-creatable slot is minute-precision (the M-B
     ///   time field), so a same-day drop of any real card is still an exact identity.
+    /// - DST spring-forward gap: if the original wall-clock time does not exist on the target
+    ///   day (e.g. 02:30 dropped on a US transition day), `bySettingHour` does NOT return nil —
+    ///   Foundation's `.nextTime` matching policy rolls forward to the first valid instant
+    ///   (03:00). That roll-forward is the pinned, tested behavior (see
+    ///   `dstSpringForwardGapRollsForward`) — deliberately accepted as-is for v1. The
+    ///   `?? targetDay` start-of-day fallback below is therefore a defensive last resort for a
+    ///   nil that no real calendar/time-zone input has been observed to produce, NOT the DST
+    ///   path; if it ever did fire, the time-of-day would be silently dropped.
     static func retargetedDueDate(original: Date?, includesTime: Bool, onto day: Date,
                                   calendar: Calendar) -> Date {
         let targetDay = calendar.startOfDay(for: day)
