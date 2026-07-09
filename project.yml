@@ -22,8 +22,8 @@ targets:
         # Single source of truth for the app version: with GENERATE_INFOPLIST_FILE=YES, Xcode
         # derives CFBundleShortVersionString/CFBundleVersion from these settings and STRIPS any
         # literal plist values (verified: without these, built apps carried no version keys at all).
-        MARKETING_VERSION: "0.2.1"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "4"
     entitlements:
       path: Tack/Tack.entitlements
       properties:
