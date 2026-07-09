@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftData
 @testable import Tack
 
 /// M-C: pure bucketing for the List View's five due-date sections. Built ON TOP of
@@ -136,5 +137,91 @@ struct BoardViewModeCodecTests {
         let a = UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000000")!
         let raw = "not-a-uuid=list,\(a.uuidString)=list,\(UUID().uuidString)=grid,,justgarbage"
         #expect(BoardViewMode.decode(raw) == [a: .list])
+    }
+}
+
+/// M-C: the live-board → bucket-sections bridge. Uses TestContainer (in-memory) because the
+/// input is a real SwiftData Board; the bucketing math itself is pinned pure in ListBucketTests
+/// above. NOTE: these run against the REAL clock via relative fixture dates — same accepted
+/// midnight-adjacent caveat as FixtureSeederTests.
+@MainActor
+@Suite("ListBucketSnapshot")
+struct ListBucketSnapshotTests {
+    private func fetchBoards(_ context: ModelContext) -> [Board] {
+        (try? context.fetch(FetchDescriptor<Board>(sortBy: [SortDescriptor(\.position)]))) ?? []
+    }
+
+    @Test("flattens ALL lists in position order and IGNORES isCollapsed")
+    func flattenIgnoresCollapse() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let lists = board.sortedLists // ["To Do", "In Progress", "Done"]
+        let first = env.store.addCard(to: lists[0], title: "First")
+        let second = env.store.addCard(to: lists[1], title: "Second")
+        env.store.setCollapsed(lists[1], true) // collapse must NOT hide Second from the flat list
+
+        let snapshot = ListBucketSnapshot.build(board: board, now: .now, calendar: .current)
+
+        #expect(snapshot.lists.count == 1, "both cards undated → exactly one No Date bucket")
+        #expect(snapshot.lists[0].id == ListBucket.noDate.snapshotID)
+        #expect(snapshot.lists[0].cardIDs == [first.id, second.id],
+                "flatten keeps list-position-then-card-position order, collapsed or not")
+    }
+
+    @Test("buckets appear in allCases order with empty buckets omitted")
+    func bucketOrderAndOmission() {
+        let env = TestContainer()
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let toDo = board.sortedLists[0]
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+
+        // Inserted in scrambled order on purpose: bucket order must come from allCases, not
+        // from card positions.
+        let laterCard = env.store.addCard(to: toDo, title: "Later card")
+        env.store.setDueDate(calendar.date(byAdding: .day, value: 30, to: today)!, on: laterCard)
+        let todayCard = env.store.addCard(to: toDo, title: "Today card")
+        env.store.setDueDate(today, on: todayCard)
+        let noDateCard = env.store.addCard(to: toDo, title: "No date card")
+
+        let snapshot = ListBucketSnapshot.build(board: board, now: .now, calendar: calendar)
+
+        #expect(snapshot.lists.map(\.id) ==
+                [ListBucket.today.snapshotID, ListBucket.later.snapshotID, ListBucket.noDate.snapshotID],
+                "allCases order, with the empty Overdue and This Week buckets omitted")
+        #expect(snapshot.lists[0].cardIDs == [todayCard.id])
+        #expect(snapshot.lists[1].cardIDs == [laterCard.id])
+        #expect(snapshot.lists[2].cardIDs == [noDateCard.id])
+    }
+
+    @Test("the standard fixture buckets exactly as ListViewUITests asserts")
+    func standardFixtureBuckets() {
+        let env = TestContainer()
+        FixtureSeeder.seed("standard", context: env.context)
+        let board = fetchBoards(env.context)[0] // Groceries
+
+        let sections = ListBucketSnapshot.sections(board: board, now: .now, calendar: .current)
+
+        #expect(sections.map(\.bucket) == [.overdue, .today, .thisWeek, .noDate],
+                "Later is empty for the fixture and must be omitted")
+        #expect(sections.map { $0.cards.map(\.title) } ==
+                [["Buy milk"], ["Call plumber"], ["Return library books", "Write report"], ["Book flights"]],
+                "the timed Write report (+5d 14:00) lands in This Week, after Return library books (flatten order)")
+    }
+
+    @Test("SelectionNavigation crosses bucket boundaries over the built snapshot")
+    func selectionNavigationOverBuckets() {
+        let env = TestContainer()
+        FixtureSeeder.seed("standard", context: env.context)
+        let board = fetchBoards(env.context)[0]
+        let snapshot = ListBucketSnapshot.build(board: board, now: .now, calendar: .current)
+
+        let buyMilkID = snapshot.lists[0].cardIDs[0]
+        // nil selection enters at the first card of the first bucket (keyboard entry point).
+        #expect(SelectionNavigation.next(selectedCardID: nil, direction: .down, board: snapshot) == buyMilkID)
+        // Down from the last Overdue card lands on the first Today card — bucket crossing works
+        // because buckets ARE ListSnapshots; SelectionNavigation needed zero changes.
+        #expect(SelectionNavigation.next(selectedCardID: buyMilkID, direction: .down, board: snapshot)
+                == snapshot.lists[1].cardIDs[0])
     }
 }

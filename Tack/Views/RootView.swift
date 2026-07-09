@@ -507,12 +507,11 @@ struct RootView: View {
                            onImportBoards: { isPresentingImporter = true })
                 .navigationTitle("Tack")
         } else if let selectedBoard {
-            // M-C: the view-mode seam. List-mode rendering lands in Task 2 (ListBoardView);
-            // until then BOTH modes render the board canvas so the seam (persistence, switcher,
-            // menu, marker) ships green without the view. KNOWN + temporary: with a board in
-            // list mode, view-mode-value honestly reads "list" while the canvas still renders.
+            // M-C: the view-mode seam. The two views are different TYPES in this if/else, so
+            // switching modes tears down the old view's @State (board-local selection, filter
+            // bar) — accepted and honest: a mode switch is a context switch.
             if selectedBoardViewMode == .list {
-                BoardView(board: selectedBoard, store: store) // Task 2 swaps this call to ListBoardView
+                ListBoardView(board: selectedBoard, store: store)
             } else {
                 BoardView(board: selectedBoard, store: store)
             }

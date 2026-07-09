@@ -78,3 +78,38 @@ enum ListBucket: CaseIterable {
         }
     }
 }
+
+/// M-C: flattens a live board into the List View's bucket sections. Kept HERE (bucket-coupled)
+/// rather than in `BoardSnapshot+Board.swift` — that file is the board-canvas bridge and this is
+/// deliberately a different visibility contract, worth keeping textually separate:
+///
+/// FLATTEN semantics: ALL cards of ALL lists, in list-position-then-card-position order,
+/// IGNORING `isCollapsed` — collapse is board-canvas layout state, not a data filter, and a
+/// flat "everything by due date" view that silently dropped a collapsed list's cards would lie.
+/// There is no label filter in list mode v1 either (`BoardActions.canFilter == false`).
+enum ListBucketSnapshot {
+    /// The rendered sections: (bucket, cards) pairs in `ListBucket.allCases` order (Overdue,
+    /// Today, This Week, Later, No Date), EMPTY BUCKETS OMITTED. Within a bucket, cards keep
+    /// flatten order.
+    static func sections(board: Board, now: Date, calendar: Calendar) -> [(bucket: ListBucket, cards: [Card])] {
+        let allCards = board.sortedLists.flatMap { $0.sortedCards }
+        let grouped = Dictionary(grouping: allCards) { card in
+            ListBucket.bucket(dueDate: card.dueDate, includesTime: card.includesTime,
+                              durationMinutes: card.durationMinutes, now: now, calendar: calendar)
+        }
+        return ListBucket.allCases.compactMap { bucket in
+            guard let cards = grouped[bucket], !cards.isEmpty else { return nil }
+            return (bucket, cards)
+        }
+    }
+
+    /// The same sections as a `BoardSnapshot` — each bucket becomes a `ListSnapshot` under its
+    /// stable `snapshotID` — so `SelectionNavigation.next` drives arrow selection across bucket
+    /// sections completely unchanged (↑/↓ walk a section and cross at its edges; ←/→ jump to
+    /// the neighbouring section at the same row index, clamped).
+    static func build(board: Board, now: Date, calendar: Calendar) -> BoardSnapshot {
+        BoardSnapshot(lists: sections(board: board, now: now, calendar: calendar).map { section in
+            BoardSnapshot.ListSnapshot(id: section.bucket.snapshotID, cardIDs: section.cards.map(\.id))
+        })
+    }
+}

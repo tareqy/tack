@@ -135,4 +135,17 @@ enum AccessibilityID {
     /// SELECTED board's view mode as its value: "board" or "list" (`BoardViewMode` raw values —
     /// wire format). Absent when no board is selected.
     static let viewModeValue = "view-mode-value"
+
+    /// A List View bucket-section header ("list-section-overdue" … "list-section-no-date"; slugs
+    /// from `ListBucket.sectionSlug`). Lives on the header `HStack` — a SIBLING of the section's
+    /// rows, never a container around them (ancestor ids shadow children). The "list-section-"
+    /// prefix can only collide with `list(_:)`'s "list-" if a board list is literally named
+    /// "section-…" — not in any fixture; accepted.
+    static func listSection(_ slug: String) -> String { "list-section-\(slug)" }
+    /// A List View card row (`.contain` container, like `card(_:)`). Prefixed "listrow-", NOT
+    /// "card-": `cardIdentifiersByPosition` counts `BEGINSWITH "card-"` and must never see rows.
+    static func listRow(_ title: String) -> String { "listrow-\(title)" }
+    /// The row's label-dots representation Text (the `cardLabels` pattern, list-mode flavored —
+    /// distinct prefix so a global identifier search stays unambiguous).
+    static func listRowLabels(_ title: String) -> String { "listrow-labels-\(title)" }
 }
