@@ -13,6 +13,11 @@ struct RootView: View {
 
     @AppStorage private var selectedBoardIDRaw: String?
     @State private var selectedBoardID: UUID?
+    /// M-C: per-board view mode, the `selectedBoardIDRaw` triad pattern one more time —
+    /// `@AppStorage` raw string (key from `AppLaunchConfig.viewModeDefaultsKey`), a live
+    /// decoded map, seeded on appear and re-encoded on change.
+    @AppStorage private var viewModesRaw: String?
+    @State private var viewModes: [UUID: BoardViewMode] = [:]
     @State private var isPresentingCreateBoard = false
 
     /// E-01 export (⇧⌘E): the document is built on demand when Export is invoked, then the
@@ -47,6 +52,7 @@ struct RootView: View {
 
     init(config: AppLaunchConfig) {
         _selectedBoardIDRaw = AppStorage(config.selectedBoardDefaultsKey)
+        _viewModesRaw = AppStorage(config.viewModeDefaultsKey)
         // Test-only affordance — honored ONLY under --uitest (mirrors how --appearance is gated
         // in TackApp.init), so a normal launch can never be made to write an export file.
         exportToFilename = config.isUITest ? config.exportTo : nil
@@ -90,6 +96,18 @@ struct RootView: View {
                     }
             }
 
+            // M-C: view-mode marker (the boardThemeValue pattern — a detached SIBLING, never an
+            // ancestor of queried children). Exposes the SELECTED board's mode as "board"/"list";
+            // absent with no board selected. This is the UI tests' oracle for mode switches.
+            if selectedBoard != nil {
+                Color.clear
+                    .allowsHitTesting(false)
+                    .accessibilityRepresentation {
+                        Text(selectedBoardViewMode.rawValue)
+                            .accessibilityIdentifier(AccessibilityID.viewModeValue)
+                    }
+            }
+
             NavigationSplitView {
                 SidebarView(selection: $selectedBoardID)
             } detail: {
@@ -104,6 +122,25 @@ struct RootView: View {
             // Sidebar", item only reachable through the overflow menu). Moving the exact same
             // `ToolbarItem` up to the split view fixed it outright. See task-5 report.
             .toolbar {
+                // M-C: the Board/List view-mode switcher. Present-but-disabled with no board
+                // selected — the same HIG stable-toolbar-geometry rationale as the Theme button
+                // below. Identifier on the Picker; segments carry LABELS only (see
+                // AccessibilityID.viewModePicker).
+                ToolbarItem(placement: .automatic) {
+                    Picker("View Mode", selection: viewModeBinding) {
+                        Image(systemName: "square.grid.3x1.below.line.grid.1x2")
+                            .accessibilityLabel("Board")
+                            .tag(BoardViewMode.board)
+                        Image(systemName: "list.bullet")
+                            .accessibilityLabel("List")
+                            .tag(BoardViewMode.list)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("Show the selected board as columns or as a due-date list")
+                    .disabled(selectedBoard == nil)
+                    .accessibilityIdentifier(AccessibilityID.viewModePicker)
+                }
                 // M8: the per-board Theme button (its popover lives inside `ThemeButton`).
                 // Contributed HERE, not from BoardView's own body, for the exact same
                 // empirically-established reason as the "New Board" item below — parameterized
@@ -125,6 +162,7 @@ struct RootView: View {
             }
         }
         .onAppear(perform: restoreSelectionIfNeeded)
+        .onAppear(perform: restoreViewModesIfNeeded)
         .onAppear(perform: wireUndoManager)
         .onAppear(perform: runExportSelfCheckIfNeeded)
         // Re-run once boards are first available (the @Query may populate after the initial appear).
@@ -133,6 +171,9 @@ struct RootView: View {
         .onChange(of: undoManagerID) { _, _ in wireUndoManager() }
         .onChange(of: selectedBoardID) { _, newValue in
             selectedBoardIDRaw = newValue?.uuidString
+        }
+        .onChange(of: viewModes) { _, newValue in
+            viewModesRaw = BoardViewMode.encode(newValue)
         }
         .sheet(isPresented: $isPresentingCreateBoard) {
             CreateBoardSheet(store: store) { created in
@@ -208,6 +249,33 @@ struct RootView: View {
         return boards.first(where: { $0.id == selectedBoardID })
     }
 
+    /// The selected board's mode; `.board` when unset, so every existing board keeps its
+    /// current look until the user opts in per board.
+    private var selectedBoardViewMode: BoardViewMode {
+        guard let selectedBoardID else { return .board }
+        return viewModes[selectedBoardID] ?? .board
+    }
+
+    /// Shared write path for the toolbar switcher and the View-menu items. No-op with no
+    /// selection (the menu gate allows enabled-with-no-selection edge states; this is the
+    /// backstop).
+    private func setViewMode(_ mode: BoardViewMode) {
+        guard let selectedBoardID else { return }
+        viewModes[selectedBoardID] = mode
+    }
+
+    private var viewModeBinding: Binding<BoardViewMode> {
+        Binding(get: { selectedBoardViewMode }, set: { setViewMode($0) })
+    }
+
+    /// Seeds the live map from the persisted string on first appearance (the
+    /// `restoreSelectionIfNeeded` pattern). Guarded so a later `.onAppear` never clobbers modes
+    /// set this session; re-decoding an empty map is a harmless no-op.
+    private func restoreViewModesIfNeeded() {
+        guard viewModes.isEmpty else { return }
+        viewModes = BoardViewMode.decode(viewModesRaw)
+    }
+
     private var boardSelectionActions: BoardSelectionActions {
         BoardSelectionActions(
             newBoard: { isPresentingCreateBoard = true },
@@ -218,7 +286,9 @@ struct RootView: View {
             },
             boardNames: sortedBoards.map(\.name),
             exportAllBoards: presentExporter,
-            importBoards: { isPresentingImporter = true }
+            importBoards: { isPresentingImporter = true },
+            currentViewMode: selectedBoard == nil ? nil : selectedBoardViewMode,
+            setViewMode: setViewMode
         )
     }
 
@@ -437,7 +507,15 @@ struct RootView: View {
                            onImportBoards: { isPresentingImporter = true })
                 .navigationTitle("Tack")
         } else if let selectedBoard {
-            BoardView(board: selectedBoard, store: store)
+            // M-C: the view-mode seam. List-mode rendering lands in Task 2 (ListBoardView);
+            // until then BOTH modes render the board canvas so the seam (persistence, switcher,
+            // menu, marker) ships green without the view. KNOWN + temporary: with a board in
+            // list mode, view-mode-value honestly reads "list" while the canvas still renders.
+            if selectedBoardViewMode == .list {
+                BoardView(board: selectedBoard, store: store) // Task 2 swaps this call to ListBoardView
+            } else {
+                BoardView(board: selectedBoard, store: store)
+            }
         } else {
             // Same native empty-state dressing as the zero-boards state next door — a bare
             // secondary string beside a fully-dressed sibling read as unfinished.

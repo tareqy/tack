@@ -38,6 +38,12 @@ struct BoardActions {
     /// `BoardView` via `.onExitCommand` (a bare-Escape `Commands` shortcut does not fire — see that
     /// call site's doc comment), so it is NOT exposed here.
     let toggleLabelFilterBar: () -> Void
+    /// M-C: whether View ▸ "Filter by Label" (⌘F) applies to the current board surface. The
+    /// label filter bar is board-canvas-only in v1 — `ListBoardView` publishes real boardActions
+    /// but passes `false` here so the menu item disables HONESTLY instead of staying enabled and
+    /// firing a silent no-op (the same enabled-but-inert trap E-02's manual gate flagged for
+    /// Export). Defaulted `true` so `BoardView`'s construction is untouched.
+    var canFilter: Bool = true
 }
 
 /// Board-navigation command surface published by `RootView`: always present (RootView is always in
@@ -57,6 +63,13 @@ struct BoardSelectionActions {
     /// `.fileImporter` — a `Commands` value can't present one, same constraint as the exporter).
     /// Always enabled, including at zero boards: restore-into-an-empty-app is the headline case.
     let importBoards: () -> Void
+    /// M-C: the SELECTED board's current view mode — nil when no board is selected. Read by the
+    /// toolbar switcher's mirror in the View menu (as Board / as List) for enablement.
+    let currentViewMode: BoardViewMode?
+    /// M-C: sets the selected board's view mode (View ▸ as Board ⌥⌘B / as List ⌥⌘L; the toolbar
+    /// switcher writes through `RootView`'s binding to the same map). No-op when no board is
+    /// selected — the backstop behind the menu items' `.disabled` gate.
+    let setViewMode: (BoardViewMode) -> Void
 }
 
 // MARK: - FocusedValueKeys

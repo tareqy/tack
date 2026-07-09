@@ -73,4 +73,12 @@ extension AppLaunchConfig {
     var selectedBoardDefaultsKey: String {
         isUITest ? "selectedBoardID.\(storeName)" : "selectedBoardID"
     }
+
+    /// M-C: UserDefaults key backing `RootView`'s persisted per-board view-mode map (one encoded
+    /// string — see `BoardViewMode.encode`). Namespaced by `storeName` under `--uitest` for the
+    /// exact same isolation story as `selectedBoardDefaultsKey` above; production uses the bare
+    /// key. `TackApp.init`'s `--reset` block clears it alongside the selection key.
+    var viewModeDefaultsKey: String {
+        isUITest ? "boardViewModes.\(storeName)" : "boardViewModes"
+    }
 }

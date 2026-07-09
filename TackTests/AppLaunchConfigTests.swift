@@ -50,4 +50,18 @@ struct AppLaunchConfigTests {
         #expect(AppLaunchConfig(arguments: ["--uitest"]).importMode == nil)
         #expect(AppLaunchConfig(arguments: ["--uitest", "--import-mode"]).importMode == nil)
     }
+
+    // MARK: - M-C: viewModeDefaultsKey
+
+    @Test("viewModeDefaultsKey is namespaced per store under --uitest")
+    func viewModeDefaultsKeyNamespacedUnderUITest() {
+        let config = AppLaunchConfig(arguments: ["--uitest", "--store-name", "s1"])
+        #expect(config.viewModeDefaultsKey == "boardViewModes.s1")
+    }
+
+    @Test("viewModeDefaultsKey is bare in production and tracks the default store name under --uitest")
+    func viewModeDefaultsKeyProductionAndDefaultStore() {
+        #expect(AppLaunchConfig(arguments: []).viewModeDefaultsKey == "boardViewModes")
+        #expect(AppLaunchConfig(arguments: ["--uitest"]).viewModeDefaultsKey == "boardViewModes.default")
+    }
 }

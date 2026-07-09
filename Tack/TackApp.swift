@@ -38,6 +38,9 @@ struct TackApp: App {
             // `relaunchPreservingStore()` omits `--reset` and so intentionally keeps it.
             if config.reset {
                 UserDefaults.standard.removeObject(forKey: config.selectedBoardDefaultsKey)
+                // M-C: the per-board view-mode map has the same per-store namespacing and the
+                // same lifecycle — clear it too, so a fresh test launch never inherits modes.
+                UserDefaults.standard.removeObject(forKey: config.viewModeDefaultsKey)
             }
 
             store = config.fixture == "spike" ? nil : BoardStore(context: uiContainer.mainContext)

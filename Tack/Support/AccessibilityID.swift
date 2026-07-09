@@ -122,4 +122,17 @@ enum AccessibilityID {
     static func filterChip(_ color: String) -> String { "filter-chip-\(color)" }
     /// The filter bar's "Clear" button — present only while a filter is active (`LabelFilterBar`).
     static let filterClear = "filter-clear"
+
+    // MARK: - M-C: list view + view-mode seam
+
+    /// The toolbar's segmented Board/List switcher. The identifier lives on the Picker control
+    /// itself; its two segments carry accessibility LABELS only ("Board"/"List") — giving
+    /// segments their own ids under an id'd ancestor is exactly the M2 ancestor-shadowing shape,
+    /// so tests reach segments as labeled radio buttons INSIDE this element instead.
+    static let viewModePicker = "view-mode-picker"
+    /// Detached marker (the `boardThemeValue` pattern: sibling `Color.clear` +
+    /// `.accessibilityRepresentation` Text, never an ancestor of queried children) exposing the
+    /// SELECTED board's view mode as its value: "board" or "list" (`BoardViewMode` raw values —
+    /// wire format). Absent when no board is selected.
+    static let viewModeValue = "view-mode-value"
 }

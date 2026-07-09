@@ -106,6 +106,21 @@ struct AppCommands: Commands {
 
             Divider()
 
+            // M-C: per-board view mode. Sentence-style titles under the View menu ("View as
+            // Board"). ⌥⌘B / ⌥⌘L — both free in the shortcut table (⌘1–9, ⌘N-family, ⇧⌘E/I,
+            // ⌃⌘S, ⌘F, ⌘O, ⌘-arrows and bare arrows are all taken; these two are not). Enabled
+            // whenever boards exist; `setViewMode` itself no-ops without a selected board (the
+            // `guardedMutation` belt-and-suspenders posture New Board already uses).
+            Button("as Board") { guardedMutation { boardSelection?.setViewMode(.board) } }
+                .keyboardShortcut("b", modifiers: [.command, .option])
+                .disabled(boardSelection == nil || boardSelection?.boardNames.isEmpty == true)
+
+            Button("as List") { guardedMutation { boardSelection?.setViewMode(.list) } }
+                .keyboardShortcut("l", modifiers: [.command, .option])
+                .disabled(boardSelection == nil || boardSelection?.boardNames.isEmpty == true)
+
+            Divider()
+
             // M11 (LB-03): the label filter bar. Gated like New Card/List (no board ⇒ nothing to
             // filter) PLUS the text-input guard, per the established pattern — toggling the bar
             // while an inline editor is focused would rearrange the board behind the caret. Esc
@@ -121,7 +136,7 @@ struct AppCommands: Commands {
             // and wins before BoardView's ever sees the key.
             Button("Filter by Label") { guardedMutation { boardActions?.toggleLabelFilterBar() } }
                 .keyboardShortcut("f", modifiers: .command)
-                .disabled(boardActions == nil || isTextInputActive)
+                .disabled(boardActions == nil || boardActions?.canFilter == false || isTextInputActive)
 
             Divider()
 
