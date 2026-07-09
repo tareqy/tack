@@ -189,4 +189,19 @@ enum AccessibilityID {
     /// pattern) whose value is "<done>/<total>". Prefixed "checklist-", never "card-"
     /// (`cardIdentifiersByPosition` counts `BEGINSWITH "card-"`). Present only when total > 0.
     static func cardChecklist(_ title: String) -> String { "checklist-\(title)" }
+
+    // MARK: - M-F: areas (sidebar board groups)
+
+    /// An area's section header (`.contain` container, the `card(_:)` shape — the chevron
+    /// Button inside keeps its own queryable id; `.combine` would swallow it, the atomic-button
+    /// pitfall). Prefixed "area-", colliding with no existing prefix; note `BEGINSWITH "area-"`
+    /// would also match `area-toggle-…`/`area-name-field` — no order-scan helper counts this
+    /// prefix (the SidebarReorderUITests posture), don't add one.
+    static func area(_ name: String) -> String { "area-\(name)" }
+    /// The header's collapse/expand chevron. One id for both states (exactly one chevron exists
+    /// per header — the `collapseListButton` discipline).
+    static func areaToggle(_ name: String) -> String { "area-toggle-\(name)" }
+    static let areaNameField = "area-name-field"
+    static let areaSheetConfirm = "area-sheet-confirm"
+    static let deleteAreaConfirm = "delete-area-confirm"
 }

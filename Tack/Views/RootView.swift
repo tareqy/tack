@@ -175,6 +175,7 @@ struct RootView: View {
         .onChange(of: undoManagerID) { _, _ in wireUndoManager() }
         .onChange(of: selectedBoardID) { _, newValue in
             selectedBoardIDRaw = newValue?.uuidString
+            autoExpandAreaIfNeeded(for: newValue)
         }
         .onChange(of: viewModes) { _, newValue in
             viewModesRaw = BoardViewMode.encode(newValue)
@@ -539,5 +540,17 @@ struct RootView: View {
         guard selectedBoardID == nil else { return }
         let savedID = selectedBoardIDRaw.flatMap(UUID.init(uuidString:))
         selectedBoardID = SelectionRestore.resolve(savedID: savedID, boards: boards)?.id
+    }
+
+    /// M-F design (c): selecting or restoring a board whose area is collapsed auto-expands that
+    /// area, so the sidebar highlight is never hidden. ONE site covers every selection path —
+    /// restore-at-launch, ⌘1–⌘9, NextBoardSelection after a delete, post-import selection, and
+    /// create. Routed through the store (an honest "Expand Area" undo step when it fires;
+    /// setAreaCollapsed's no-op guard makes every other selection change free).
+    private func autoExpandAreaIfNeeded(for boardID: UUID?) {
+        guard let boardID,
+              let area = boards.first(where: { $0.id == boardID })?.area,
+              area.isCollapsed else { return }
+        store.setAreaCollapsed(area, false)
     }
 }
