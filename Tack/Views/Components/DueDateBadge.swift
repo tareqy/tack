@@ -9,12 +9,19 @@ import SwiftUI
 /// M10 adds the actual urgency colors via the pure `DueDateBadgeStyle.role(for:)` helper (unit
 /// tested in isolation — see `DueDateBadgeStyleTests`) plus its `BadgeRole` → `Color` extension
 /// (`DueDateBadgeStyle+Color.swift`, SwiftUI-flavored so it stays out of the pure/testable helper).
+///
+/// M-B feeds the card's time state into `classify` (a timed card goes overdue the moment its slot
+/// ends) and extends BOTH representations for TIMED cards only: visible "Jul 12, 2:00 PM", a11y
+/// "<isoFullDate>T<HH:mm>|<status>". Date-only cards keep the exact M10 forms — the a11y value is
+/// pinned byte-for-byte by CardDetailUITests.testDueDateQuickOptionAndClear, and `|status` stays
+/// the LAST segment either way (BadgeUITests asserts by suffix).
 struct DueDateBadge: View {
     let card: Card
     let dueDate: Date
 
     private var status: DueDateStatus {
-        DueDateStatus.classify(dueDate: dueDate, now: .now, calendar: .current)
+        DueDateStatus.classify(dueDate: dueDate, includesTime: card.includesTime,
+                               durationMinutes: card.durationMinutes, now: .now, calendar: .current)
     }
 
     private var role: BadgeRole {
@@ -22,7 +29,7 @@ struct DueDateBadge: View {
     }
 
     var body: some View {
-        Text(Self.shortDateFormatter.string(from: dueDate))
+        Text(visibleText)
             .font(.caption2)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -39,9 +46,24 @@ struct DueDateBadge: View {
             // landed in) without resorting to pixel/color inspection — colors stay verified by
             // screenshot inspection instead (see the task-12 report's audit table).
             .accessibilityRepresentation {
-                Text("\(Self.isoDateFormatter.string(from: dueDate))|\(Self.wireValue(for: status))")
+                Text("\(wireDateValue)|\(Self.wireValue(for: status))")
                     .accessibilityIdentifier(AccessibilityID.dueDateBadge(card: card.title))
             }
+    }
+
+    /// "Jul 12" for date-only cards (unchanged); "Jul 12, 2:00 PM" for timed cards (M-B).
+    private var visibleText: String {
+        let day = Self.shortDateFormatter.string(from: dueDate)
+        guard card.includesTime else { return day }
+        return "\(day), \(Self.shortTimeFormatter.string(from: dueDate))"
+    }
+
+    /// The date leg of the a11y value: "<isoFullDate>" for date-only cards — EXACTLY the M10
+    /// form — and "<isoFullDate>T<HH:mm>" for timed cards.
+    private var wireDateValue: String {
+        let iso = Self.isoDateFormatter.string(from: dueDate)
+        guard card.includesTime else { return iso }
+        return "\(iso)T\(Self.wireTimeFormatter.string(from: dueDate))"
     }
 
     /// The machine-readable status suffix for the a11y value — deliberately separate from
@@ -61,6 +83,26 @@ struct DueDateBadge: View {
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
+    /// Locale-appropriate short time for the VISIBLE capsule ("2:00 PM" or "14:00" per locale).
+    private static let shortTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    /// Machine-readable 24-hour "HH:mm" for the a11y value. POSIX-pinned: without it, the user's
+    /// 12/24-hour system preference can rewrite even an explicit dateFormat (HH → hh), which
+    /// would flake the e2e "T09:00" assertion per-host. Local time zone, matching
+    /// `isoDateFormatter`'s explicitly-local rationale.
+    private static let wireTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        formatter.timeZone = .current
         return formatter
     }()
 

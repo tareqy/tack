@@ -23,6 +23,8 @@ struct CardDetailView: View {
     @State private var details: String
     @State private var labels: Set<LabelColor>
     @State private var dueDate: Date?
+    @State private var includesTime: Bool
+    @State private var durationMinutes: Int?
 
     init(card: Card, store: BoardStore, onDelete: @escaping () -> Void) {
         self.card = card
@@ -32,6 +34,8 @@ struct CardDetailView: View {
         _details = State(initialValue: card.details ?? "")
         _labels = State(initialValue: Set(card.labels.compactMap { LabelColor(rawValue: $0.colorName) }))
         _dueDate = State(initialValue: card.dueDate)
+        _includesTime = State(initialValue: card.includesTime)
+        _durationMinutes = State(initialValue: card.durationMinutes)
     }
 
     var body: some View {
@@ -74,7 +78,7 @@ struct CardDetailView: View {
                 }
 
                 LabelPicker(selected: $labels)
-                DueDatePicker(dueDate: $dueDate)
+                DueDatePicker(dueDate: $dueDate, includesTime: $includesTime, durationMinutes: $durationMinutes)
             }
             .padding(20)
 
@@ -128,10 +132,8 @@ struct CardDetailView: View {
             details: trimmedDetails.isEmpty ? nil : trimmedDetails,
             labels: labels,
             dueDate: dueDate,
-            // Interim (M-B Task 1): pass the card's CURRENT time state through unchanged so an
-            // unrelated edit never wipes a time slot. Task 3 replaces both with staged @State.
-            includesTime: card.includesTime,
-            durationMinutes: card.durationMinutes
+            includesTime: includesTime,
+            durationMinutes: durationMinutes
         )
     }
 }

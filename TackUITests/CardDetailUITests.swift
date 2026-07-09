@@ -220,6 +220,82 @@ final class CardDetailUITests: TackUITestCase {
         XCTAssertTrue(poll(timeout: timeout) { !badge.exists }, "badge should disappear after Clear + Save")
     }
 
+    /// M-B: the Time toggle stages a 9:00 AM slot on a date-only pick (deterministic — the staged
+    /// quick-button date is bare midnight), Save persists it, the badge exposes the timed a11y
+    /// value ("<iso>T09:00|tomorrow" — status stays the LAST segment), and reopening shows the
+    /// toggle on. The duration menu's interaction is human-verified (menu-style Picker popups
+    /// under synthetic input are the B-06 class of problem); this test pins its presence only.
+    func testTimedDueDateTogglePersists() {
+        launch(fixture: "standard")
+
+        // "Book flights" (Done) starts with no due date at all.
+        openDetailViaBodyDoubleClick("Book flights")
+        element(AccessibilityID.dueQuickTomorrow).click()
+        let toggle = element(AccessibilityID.dueTimeToggle)
+        XCTAssertTrue(toggle.waitForExistence(timeout: timeout),
+                      "Time toggle should appear once a date is staged")
+        toggle.click()
+
+        XCTAssertTrue(element(AccessibilityID.dueTimeField).waitForExistence(timeout: timeout),
+                      "hour-and-minute field should appear when the toggle is on")
+        XCTAssertTrue(element(AccessibilityID.dueDurationField).exists,
+                      "duration menu should appear when the toggle is on")
+
+        hittableButton("Save").click()
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+
+        let badge = element(AccessibilityID.dueDateBadge(card: "Book flights"))
+        XCTAssertTrue(poll(timeout: timeout) { badge.exists }, "badge should appear after Save")
+        let value = badge.value as? String ?? ""
+        XCTAssertTrue(value.contains("T09:00"),
+                      "timed badge value should carry the deterministic 9:00 AM default slot, got '\(value)'")
+        XCTAssertTrue(value.hasSuffix("|tomorrow"),
+                      "status must stay the LAST a11y segment, got '\(value)'")
+
+        // Reopen: staged state seeds from the card — the toggle reads on.
+        openDetailViaBodyDoubleClick("Book flights")
+        XCTAssertTrue(poll(timeout: timeout) { toggle.exists })
+        // AX bridges a checkbox value as String or NSNumber depending on macOS build — coerce.
+        let toggleValue = (toggle.value as? String) ?? (toggle.value as? Int).map(String.init) ?? ""
+        XCTAssertEqual(toggleValue, "1", "Time toggle should read ON for a timed card")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+    }
+
+    /// TRACKED HAZARD (Task 1 review): clicking a quick option on an ALREADY-TIMED card must reset
+    /// the staged time state, not just the date — otherwise the quick button would silently commit
+    /// a midnight "timed" card (`includesTime` true, `dueDate` at start-of-day). "Write report" is
+    /// the fixture's timed card (14:00 +5d, 60min); staging Today must show the toggle OFF before
+    /// Save is even clicked, proving the reset happens at stage time, not just on persist.
+    func testQuickOptionOnTimedCardResetsTimeState() {
+        launch(fixture: "standard")
+
+        openDetailViaBodyDoubleClick("Write report")
+        let toggle = element(AccessibilityID.dueTimeToggle)
+        XCTAssertTrue(poll(timeout: timeout) { toggle.exists },
+                      "Write report is timed — the toggle should already be visible")
+        let initialToggleValue = (toggle.value as? String) ?? (toggle.value as? Int).map(String.init) ?? ""
+        XCTAssertEqual(initialToggleValue, "1", "Write report should stage with its Time toggle ON")
+
+        element(AccessibilityID.dueQuickToday).click()
+
+        XCTAssertTrue(poll(timeout: timeout) {
+            let current = (toggle.value as? String) ?? (toggle.value as? Int).map(String.init) ?? ""
+            return current == "0"
+        }, "a quick-pick on an already-timed card must reset the staged Time toggle to OFF")
+        XCTAssertFalse(element(AccessibilityID.dueTimeField).exists,
+                       "the hour-and-minute field must not remain staged after a quick-pick reset")
+
+        hittableButton("Save").click()
+        XCTAssertTrue(poll(timeout: timeout) { !self.detailSheet.exists })
+
+        let badge = element(AccessibilityID.dueDateBadge(card: "Write report"))
+        XCTAssertTrue(poll(timeout: timeout) { badge.exists })
+        let value = badge.value as? String ?? ""
+        XCTAssertFalse(value.contains("T"),
+                       "a quick-picked date must persist date-only (no T<HH:mm> segment), got '\(value)'")
+    }
+
     // MARK: - Staged edits: Esc discards
 
     func testEscDiscardsStagedEdits() {

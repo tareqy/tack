@@ -78,6 +78,12 @@ enum AccessibilityID {
     static let dueDatePickerField = "due-date-picker"
     static let dueClear = "due-clear"
 
+    /// M-B time-slot controls. The toggle/time-field/duration-menu trio exists only while a due
+    /// date is staged; the field and menu additionally require the toggle on.
+    static let dueTimeToggle = "due-time-toggle"
+    static let dueTimeField = "due-time-field"
+    static let dueDurationField = "due-duration-field"
+
     // MARK: - M8: board themes
 
     static let themeButton = "theme-button"
