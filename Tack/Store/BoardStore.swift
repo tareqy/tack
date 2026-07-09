@@ -535,6 +535,7 @@ final class BoardStore {
                         position: cardIndex,
                         dueDate: exportCard.dueDate,
                         includesTime: exportCard.includesTime,
+                        durationMinutes: exportCard.durationMinutes,
                         createdAt: exportCard.createdAt,
                         updatedAt: exportCard.updatedAt,
                         list: list

@@ -226,7 +226,8 @@ struct BoardStoreImportTests {
     @Test("export → import into a fresh store → re-export reproduces the original bytes")
     func byteEqualityRoundTrip() throws {
         // Container A: seed via store ops, exercising EVERY format field — emoji, about, theme +
-        // custom hex, a collapsed list, details, multiple labels, a due date (includesTime false).
+        // custom hex, a collapsed list, details, multiple labels, a due date (includesTime false),
+        // a timed card + duration.
         let a = TestContainer()
         defer { withExtendedLifetime(a) {} }
         a.store.ensureLabelsSeeded()
@@ -238,7 +239,11 @@ struct BoardStoreImportTests {
         a.store.applyCardEdits(cardOne, title: "Card One", details: "line1\nline2",
                                labels: [.red, .blue], dueDate: Date(timeIntervalSince1970: 1_781_800_000),
                                includesTime: false, durationMinutes: nil)
-        a.store.addCard(to: alphaLists[0], title: "Card Two")
+        let cardTwo = a.store.addCard(to: alphaLists[0], title: "Card Two")
+        // M-B: a timed card with a duration — includesTime true skips startOfDay normalization,
+        // so the raw whole-second epoch survives ISO-8601 byte-stably.
+        a.store.setDueDate(Date(timeIntervalSince1970: 1_781_803_800), on: cardTwo,
+                           includesTime: true, durationMinutes: 90)
         a.store.createBoard(name: "Beta", emoji: nil)
 
         let fixedExportedAt = Date(timeIntervalSince1970: 1_781_827_200)

@@ -48,6 +48,10 @@ struct ExportCard: Codable, Equatable {
     var position: Int
     var dueDate: Date?
     var includesTime: Bool
+    // Defaulted (the ExportBoard.about precedent) so out-of-scope ExportCard(...) construction
+    // sites keep compiling; a missing JSON key always decodes an Optional as nil, so v1/v2
+    // files import with no duration.
+    var durationMinutes: Int? = nil
     var createdAt: Date
     var updatedAt: Date
     /// Applied labels as `LabelColor` raw color names, in the fixed palette order
@@ -62,7 +66,8 @@ enum ExportDocument {
     /// The current export schema version. Bump only alongside an importer migration (E-02).
     /// v2 (M-A): + ExportBoard.about. The import gate accepts 1...formatVersion; older files
     /// decode missing fields as nil.
-    static let formatVersion = 2
+    /// v3 (M-B): + ExportCard.durationMinutes; includesTime is now user-settable.
+    static let formatVersion = 3
 
     /// Maps live boards (in position order) to the export envelope. Read-only. `@MainActor`
     /// because it reads SwiftData model properties. `exportedAt` is injectable for deterministic
@@ -109,6 +114,7 @@ enum ExportDocument {
             position: card.position,
             dueDate: card.dueDate,
             includesTime: card.includesTime,
+            durationMinutes: card.durationMinutes,
             createdAt: card.createdAt,
             updatedAt: card.updatedAt,
             labels: LabelColor.allCases.filter { owned.contains($0) }.map(\.rawValue)
@@ -151,6 +157,7 @@ enum ExportDocument {
     /// Gray-zone sanitization (all pure, all idempotent):
     ///   - card labels filtered to known `LabelColor` rawValues, deduped, reordered to palette order;
     ///   - `dueDate` → `calendar.startOfDay` when `includesTime == false` (the Card invariant);
+    ///   - `durationMinutes` → nil unless includesTime && > 0 (the Card invariant M-B adds);
     ///   - `customThemeHex` canonicalized via HexColor parse→format, or nil when unparsable (the
     ///     store's "never persists unparsable hex" invariant).
     /// Deliberately NOT rewritten: `themeName` (unknowns resolve to `.default` at render — that IS
@@ -170,6 +177,9 @@ enum ExportDocument {
                     card.labels = LabelColor.allCases.filter { owned.contains($0) }.map(\.rawValue)
                     if let dueDate = card.dueDate, !card.includesTime {
                         card.dueDate = calendar.startOfDay(for: dueDate)
+                    }
+                    if !card.includesTime || (card.durationMinutes ?? 0) <= 0 {
+                        card.durationMinutes = nil
                     }
                     return card
                 }

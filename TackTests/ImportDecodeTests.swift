@@ -20,10 +20,12 @@ struct ImportDecodeTests {
         """.utf8)
     }
 
-    private func cardJSON(labels: String = "[]", dueDate: String? = nil, includesTime: Bool = false) -> String {
+    private func cardJSON(labels: String = "[]", dueDate: String? = nil, includesTime: Bool = false,
+                          durationMinutes: Int? = nil) -> String {
         let due = dueDate.map { "\"dueDate\":\"\($0)\"," } ?? ""
+        let duration = durationMinutes.map { "\"durationMinutes\":\($0)," } ?? ""
         return """
-        {"createdAt":"2026-01-01T00:00:00Z","details":null,\(due)"includesTime":\(includesTime),
+        {"createdAt":"2026-01-01T00:00:00Z","details":null,\(due)\(duration)"includesTime":\(includesTime),
          "labels":\(labels),"position":0,"title":"C","updatedAt":"2026-01-01T00:00:00Z"}
         """
     }
@@ -66,9 +68,9 @@ struct ImportDecodeTests {
         catch { Issue.record("expected ImportError, got \(error)") }
     }
 
-    @Test("formatVersion 3 and 0 throw .unsupportedVersion carrying the file's version")
+    @Test("formatVersion 4 and 0 throw .unsupportedVersion carrying the file's version")
     func versionGate() {
-        for version in [3, 0] {
+        for version in [4, 0] {
             do { _ = try ExportDocument.decodeForImport(json("", formatVersion: version)) }
             catch let error as ImportError { #expect(error == .unsupportedVersion(version)) }
             catch { Issue.record("expected ImportError, got \(error)") }
@@ -82,6 +84,15 @@ struct ImportDecodeTests {
         let envelope = try ExportDocument.decodeForImport(data)
         #expect(envelope.formatVersion == 1)
         #expect(envelope.boards.first?.about == nil)
+    }
+
+    @Test("a version-2 file (no durationMinutes key) still imports; duration decodes nil")
+    func v2FileStillImports() throws {
+        let data = json(boardJSON(cards: cardJSON(dueDate: "2026-07-08T15:30:00Z", includesTime: true)),
+                        formatVersion: 2)
+        let envelope = try ExportDocument.decodeForImport(data)
+        #expect(envelope.formatVersion == 2)
+        #expect(envelope.boards[0].lists[0].cards[0].durationMinutes == nil)
     }
 
     @Test("fractional-second ISO dates throw .unreadable (Foundation .iso8601 rejects them)")
@@ -135,6 +146,28 @@ struct ImportDecodeTests {
         #expect(envelope.boards[0].lists[0].cards[0].dueDate == expected)
     }
 
+    @Test("durationMinutes is nilled when the card is date-only")
+    func durationNilledWhenDateOnly() throws {
+        let envelope = try ExportDocument.decodeForImport(
+            json(boardJSON(cards: cardJSON(dueDate: "2026-07-08T15:30:00Z", includesTime: false,
+                                           durationMinutes: 60))), calendar: utcCalendar)
+        #expect(envelope.boards[0].lists[0].cards[0].durationMinutes == nil)
+    }
+
+    @Test("non-positive durationMinutes is nilled; a positive timed duration passes through")
+    func durationClampedWhenNonPositive() throws {
+        for bad in [0, -15] {
+            let envelope = try ExportDocument.decodeForImport(
+                json(boardJSON(cards: cardJSON(dueDate: "2026-07-08T15:30:00Z", includesTime: true,
+                                               durationMinutes: bad))), calendar: utcCalendar)
+            #expect(envelope.boards[0].lists[0].cards[0].durationMinutes == nil)
+        }
+        let kept = try ExportDocument.decodeForImport(
+            json(boardJSON(cards: cardJSON(dueDate: "2026-07-08T15:30:00Z", includesTime: true,
+                                           durationMinutes: 45))), calendar: utcCalendar)
+        #expect(kept.boards[0].lists[0].cards[0].durationMinutes == 45)
+    }
+
     @Test("customThemeHex is canonicalized ('#ff0000' → 'FF0000'); garbage becomes nil")
     func hexCanonicalized() throws {
         let canonical = try ExportDocument.decodeForImport(
@@ -162,8 +195,10 @@ struct ImportDecodeTests {
     @Test("sanitization is idempotent: decode(encode(decoded)) == decoded")
     func sanitizeIdempotent() throws {
         let data = json(boardJSON(cards: cardJSON(labels: #"["blue","red","neon"]"#,
-                                                  dueDate: "2026-07-08T15:30:00Z"),
-                                  customThemeHex: "\"#ff0000\""))
+                                                  dueDate: "2026-07-08T15:30:00Z") + "," +
+                                         cardJSON(dueDate: "2026-07-08T15:30:00Z",
+                                                  includesTime: true, durationMinutes: 45),
+                          customThemeHex: "\"#ff0000\""))
         let once = try ExportDocument.decodeForImport(data, calendar: utcCalendar)
         let twice = try ExportDocument.decodeForImport(try ExportDocument.encode(once), calendar: utcCalendar)
         #expect(once == twice)

@@ -22,16 +22,16 @@ struct ExportDocumentTests {
         try body(boards)
     }
 
-    @Test("formatVersion is 2 and present in the encoded JSON")
-    func formatVersionIsTwo() throws {
+    @Test("formatVersion is 3 and present in the encoded JSON")
+    func formatVersionIsThree() throws {
         try withStandardBoards { boards in
             let envelope = ExportDocument.makeEnvelope(boards: boards)
-            #expect(envelope.formatVersion == 2)
+            #expect(envelope.formatVersion == 3)
 
             let json = String(data: try ExportDocument.encode(envelope), encoding: .utf8)!
             #expect(json.contains("\"formatVersion\""))
-            // The value round-trips as 2 regardless of pretty-print spacing.
-            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 2)
+            // The value round-trips as 3 regardless of pretty-print spacing.
+            #expect(try ExportDocument.decode(Data(json.utf8)).formatVersion == 3)
         }
     }
 
@@ -64,6 +64,11 @@ struct ExportDocumentTests {
             #expect(toDo.cards[1].labels.isEmpty)                 // Call plumber (unlabeled)
             #expect(groceries.lists[1].cards[0].labels == ["red"]) // Write report
 
+            // M-B: the fixture's timed card round-trips its time state and duration.
+            let writeReport = groceries.lists[1].cards[0]
+            #expect(writeReport.includesTime == true)
+            #expect(writeReport.durationMinutes == 60)
+
             // Work board: 3 empty default lists.
             let work = decoded.boards[1]
             #expect(work.lists.map(\.name) == ["To Do", "In Progress", "Done"])
@@ -86,6 +91,10 @@ struct ExportDocumentTests {
             #expect(decoded.boards[0].lists[0].cards[0].dueDate == buyMilkDue)
             // Book flights has no due date — round-trips as nil (key omitted).
             #expect(decoded.boards[0].lists[2].cards[0].dueDate == nil)
+
+            // Timed due dates (14:00:00, zero sub-seconds) are also ISO-8601-lossless: exact equality.
+            let writeReportDue = boards[0].sortedLists[1].sortedCards[0].dueDate
+            #expect(decoded.boards[0].lists[1].cards[0].dueDate == writeReportDue)
 
             // createdAt (a `.now` with sub-seconds) survives to whole-second precision.
             let originalCreatedAt = boards[0].createdAt
@@ -121,6 +130,6 @@ struct ExportDocumentTests {
 
         let decoded = try ExportDocument.decode(try ExportDocument.encode(ExportDocument.makeEnvelope(boards: boards)))
         #expect(decoded.boards.isEmpty)
-        #expect(decoded.formatVersion == 2)
+        #expect(decoded.formatVersion == 3)
     }
 }
