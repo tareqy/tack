@@ -343,16 +343,24 @@ final class BoardStore {
     /// (M-B) store the raw wall-clock `date` with `includesTime` true. `durationMinutes` is kept
     /// only when the call is timed AND the value is positive — nil otherwise, so a date-only card
     /// can never carry a stray duration and a zero/negative slot is never persisted.
+    ///
+    /// M-D: a call whose NORMALIZED (dueDate, includesTime, durationMinutes) trio already matches
+    /// the card opens no undo group, does not save, and does not bump `updatedAt` (the
+    /// `editBoard`/`applyCardEdits` discipline) — without this, dropping a calendar chip on its
+    /// own day would register a junk undo step that makes the next ⌘Z a silent no-op.
     func setDueDate(_ date: Date?, on card: Card, includesTime: Bool = false, durationMinutes: Int? = nil) {
+        let normalizedIncludesTime = date != nil && includesTime
+        let normalizedDueDate = date.map { normalizedIncludesTime ? $0 : Calendar.current.startOfDay(for: $0) }
+        let normalizedDuration = (normalizedIncludesTime && (durationMinutes ?? 0) > 0) ? durationMinutes : nil
+
+        guard normalizedDueDate != card.dueDate
+                || normalizedIncludesTime != card.includesTime
+                || normalizedDuration != card.durationMinutes else { return }
+
         withUndoGroup("Set Due Date") {
-            let normalizedIncludesTime = date != nil && includesTime
-            if let date {
-                card.dueDate = normalizedIncludesTime ? date : Calendar.current.startOfDay(for: date)
-            } else {
-                card.dueDate = nil
-            }
+            card.dueDate = normalizedDueDate
             card.includesTime = normalizedIncludesTime
-            card.durationMinutes = (normalizedIncludesTime && (durationMinutes ?? 0) > 0) ? durationMinutes : nil
+            card.durationMinutes = normalizedDuration
             card.updatedAt = .now
             save()
         }

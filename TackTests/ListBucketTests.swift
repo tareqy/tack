@@ -152,6 +152,16 @@ struct BoardViewModeCodecTests {
         let canonical = "\(a.uuidString)=board,\(b.uuidString)=list"
         #expect(BoardViewMode.encode(BoardViewMode.decode(canonical)) == canonical)
     }
+
+    @Test("M-D: calendar round-trips; its raw value is wire format")
+    func calendarRoundTrips() {
+        let a = UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000000")!
+        let b = UUID(uuidString: "BBBBBBBB-0000-4000-8000-000000000000")!
+        let map: [UUID: BoardViewMode] = [a: .calendar, b: .list]
+        #expect(BoardViewMode.decode(BoardViewMode.encode(map)) == map)
+        #expect(BoardViewMode.encode([a: .calendar]) == "\(a.uuidString)=calendar",
+                "raw value 'calendar' appears verbatim in the persisted string — wire format")
+    }
 }
 
 /// M-C: the live-board → bucket-sections bridge. Uses TestContainer (in-memory) because the

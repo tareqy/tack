@@ -1,7 +1,8 @@
 import Foundation
 
-/// M-C: a board's view mode — the column canvas ("board") or the due-date-bucketed flat list
-/// ("list"). The raw values are WIRE FORMAT twice over: they appear inside the persisted
+/// M-C: a board's view mode — the column canvas ("board"), the due-date-bucketed flat list
+/// ("list"), or (M-D) the month-grid calendar ("calendar"). The raw values are WIRE FORMAT
+/// twice over: they appear inside the persisted
 /// UserDefaults string (the codec below) and as the `view-mode-value` accessibility marker's
 /// exposed value — never rename them.
 ///
@@ -11,6 +12,11 @@ import Foundation
 enum BoardViewMode: String {
     case board
     case list
+    /// M-D: the month-grid Calendar View. Raw value "calendar" is wire format like its siblings
+    /// (persisted defaults string + view-mode-value marker). Downgrade posture: the M-C decoder
+    /// drops unknown modes silently (see `decode`), so a defaults string containing "calendar"
+    /// read by an older build falls back to `.board` — tolerated by design, never a crash.
+    case calendar
 
     /// Decodes "uuid=mode,uuid=mode" (any order) into the per-board map. Tolerant by design:
     /// malformed entries, bad UUIDs, and unknown modes are silently dropped (the

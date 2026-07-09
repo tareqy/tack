@@ -144,4 +144,68 @@ struct LabelTests {
         #expect(card.includesTime == false)
         #expect(card.durationMinutes == nil)
     }
+
+    // MARK: - M-D: setDueDate same-value guard
+
+    @Test("setDueDate with an identical resulting trio registers no undo step and keeps updatedAt")
+    func setDueDateSameValueIsNoOp() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        let day = Calendar.current.startOfDay(for: .now)
+        env.store.setDueDate(day, on: card)
+        env.undoManager?.removeAllActions()
+        let stamp = card.updatedAt
+
+        env.store.setDueDate(day, on: card) // same resulting (dueDate, includesTime, duration) trio
+
+        #expect(env.undoManager?.canUndo == false,
+                "dropping a card on its own day must not register a junk undo step")
+        #expect(card.updatedAt == stamp, "a no-change call must not bump updatedAt either")
+    }
+
+    @Test("the guard compares the NORMALIZED trio: same-day date-only re-set at a different clock time is a no-op")
+    func setDueDateSameDayDifferentClockTimeIsNoOp() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        let day = Calendar.current.startOfDay(for: .now)
+        env.store.setDueDate(day, on: card)
+        env.undoManager?.removeAllActions()
+
+        // 15:30 on the same day normalizes to the same start-of-day — identical trio.
+        env.store.setDueDate(day.addingTimeInterval(15.5 * 3600), on: card)
+
+        #expect(env.undoManager?.canUndo == false)
+        #expect(card.dueDate == day)
+    }
+
+    @Test("timed same trio is a no-op; changing only the duration still registers")
+    func setDueDateTimedGuardAndDurationChange() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card")
+        let slot = Calendar.current.date(bySettingHour: 14, minute: 0, second: 0, of: .now)!
+        env.store.setDueDate(slot, on: card, includesTime: true, durationMinutes: 60)
+        env.undoManager?.removeAllActions()
+
+        env.store.setDueDate(slot, on: card, includesTime: true, durationMinutes: 60)
+        #expect(env.undoManager?.canUndo == false, "identical timed trio → no undo step")
+
+        env.store.setDueDate(slot, on: card, includesTime: true, durationMinutes: 30)
+        #expect(env.undoManager?.canUndo == true, "a real duration change still registers")
+        #expect(card.durationMinutes == 30)
+    }
+
+    @Test("nil-to-nil is a no-op")
+    func setDueDateNilToNilIsNoOp() {
+        let env = TestContainer(withUndo: true)
+        let board = env.store.createBoard(name: "B", emoji: nil)
+        let card = env.store.addCard(to: board.sortedLists[0], title: "Card") // dueDate starts nil
+        env.undoManager?.removeAllActions()
+
+        env.store.setDueDate(nil, on: card)
+
+        #expect(env.undoManager?.canUndo == false)
+    }
 }
