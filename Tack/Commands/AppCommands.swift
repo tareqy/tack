@@ -15,6 +15,14 @@ struct AppCommands: Commands {
     @FocusedValue(\.textInputFocused) private var textInputFocused
 
     var body: some Commands {
+        // MARK: App menu — replace the stock "About Tack" so the standard AppKit About panel
+        // carries a credits line. The panel still shows the app name/icon and the version
+        // (derived from CFBundleShortVersionString / CFBundleVersion — project.yml's
+        // MARKETING_VERSION / CURRENT_PROJECT_VERSION) natively; we only supply `.credits`.
+        CommandGroup(replacing: .appInfo) {
+            Button("About Tack") { Self.showAboutPanel() }
+        }
+
         // MARK: File — placed BEFORE the system "New … Window" item so ⌘N resolves to New Card
         // when a board is on screen (first enabled key-equivalent match wins), while a disabled
         // New Card (no board) falls through to the still-present New Window item, keeping the
@@ -193,6 +201,23 @@ struct AppCommands: Commands {
                     .disabled(position > (boardSelection?.boardNames.count ?? 0))
             }
         }
+    }
+
+    // MARK: - About panel
+
+    /// Presents the standard AppKit About panel with a custom credits line. The panel renders the
+    /// app name, icon, and version (`Version <short> (<build>)`) from the bundle itself; the only
+    /// thing we override is the credits block below the version.
+    private static func showAboutPanel() {
+        let credits = NSAttributedString(
+            string: "Developed by Tareq Yaghmour and Claude",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]
+        )
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func boardTitle(_ position: Int) -> String {
