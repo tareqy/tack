@@ -28,13 +28,19 @@ struct AppCommands: Commands {
         // New Card (no board) falls through to the still-present New Window item, keeping the
         // test harness's window-opening path intact.
         CommandGroup(before: .newItem) {
-            Button("New Card") { boardActions?.newCard() }
+            Button("New Card") { guardedMutation { boardActions?.newCard() } }
                 .keyboardShortcut("n", modifiers: .command)
-                .disabled(boardActions == nil || boardActions?.canCreateCard == false)
+                // Deliberately remain enabled while an inspector text field is focused: the
+                // guarded action consumes ⌘N as a no-op. Disabling this first key-equivalent
+                // would let ⌘N fall through to the system New Tack Window item below it. The
+                // focus exception also covers List/Calendar and all-collapsed Board states where
+                // card creation is normally unavailable.
+                .disabled(boardActions == nil
+                          || (boardActions?.canCreateCard == false && !isTextInputActive))
 
-            Button("New List") { boardActions?.newList() }
+            Button("New List") { guardedMutation { boardActions?.newList() } }
                 .keyboardShortcut("n", modifiers: [.command, .option])
-                .disabled(boardActions == nil || boardActions?.canCreateList == false)
+                .disabled(boardActions == nil || boardActions?.canCreateList == false || isTextInputActive)
 
             // Ellipsis: opens the naming sheet — further input before anything is created (HIG).
             Button("New Board…") { guardedMutation { boardSelection?.newBoard() } }
@@ -71,11 +77,11 @@ struct AppCommands: Commands {
                 .disabled(boardActions?.selectedCard == nil || isTextInputActive)
         }
 
-        // MARK: Card — open the detail sheet + move the selected card with ⌘-arrows.
+        // MARK: Card — open the configured detail presentation + move with ⌘-arrows.
         CommandMenu("Card") {
-            // ⌘O opens the selected card's detail sheet. Gated EXACTLY like Delete Card (a card
-            // must be selected, and not while typing / beneath a sheet) so it can never open the
-            // sheet for a card the user can't currently see acting on.
+            // ⌘O opens the selected card's configured detail presentation. Gated EXACTLY like
+            // Delete Card (a card must be selected, and not while typing / beneath a modal sheet)
+            // so it can never open a card the user can't currently see acting on.
             Button("Open Card") { guardedMutation { boardActions?.openSelectedCard() } }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(boardActions?.selectedCard == nil || isTextInputActive)

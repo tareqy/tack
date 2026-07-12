@@ -11,6 +11,13 @@ import SwiftUI
 struct BoardView: View {
     let board: Board
     let store: BoardStore
+    let isCardDetailSheetPresented: Bool
+    let onOpenCard: (Card) -> Void
+    let onDeleteCard: (Card) -> Void
+    let onDeleteList: (BoardList) -> Void
+    /// BoardView owns a label-filter Esc handler. When the filter is already hidden, forward Esc
+    /// so RootView can preserve the inspector's presentation-level Cancel behavior.
+    let onExitCardDetail: () -> Void
 
     /// Fixed so DropMath (and the visual layout) have a deterministic column width to reason
     /// about the midline against — same rationale as the M2 spike's fixed `rowHeight`.
@@ -20,9 +27,6 @@ struct BoardView: View {
     /// Board-local single-card selection. Exported to the menu via `focusedSceneValue` (M7) for the
     /// ⌘⌫/⌘-arrow/arrow commands, but still owned here as simple @State.
     @State private var selectedCardID: UUID?
-    /// The card currently showing its M6 detail sheet, if any — bound into every `CardView` so
-    /// double-click-body / context-menu "Open Card" can set it from anywhere on the board.
-    @State private var selectedDetailCard: Card?
 
     /// Command trigger: set to a list's id to make THAT column open its inline add-card editor
     /// (⌘N). The handling column resets it to nil so the same list can be retriggered.
@@ -62,28 +66,18 @@ struct BoardView: View {
         // (ListColumnView) on top, so content legibility is unaffected by the wash underneath.
         .background(themeBackground)
         .overlay(alignment: .topLeading) { themeValueMarker }
-        .sheet(item: $selectedDetailCard) { card in
-            CardDetailView(card: card, store: store, onDelete: {
-                // Order matters — see CardDetailView.onDelete: close the sheet (nil the item)
-                // BEFORE deleting, so no re-render evaluates the sheet against a deleted card.
-                selectedDetailCard = nil
-                store.deleteCard(card)
-            })
-        }
         // Exported focus state (M7). `focusedBoard`/`selectedCard`/`focusedList` are the documented
         // focus values; `boardActions` is what `AppCommands` actually reads (its presence == a board
         // is shown, driving New Card/New List enablement). "Focused list" = the selected card's list.
         //
-        // The `boardActions` export goes NIL while the card-detail sheet is up: macOS matches menu
-        // key equivalents BEFORE the key window's responder chain, so with the sheet open an
-        // enabled ⌘⌫ would delete the very card the sheet is editing behind its back, and enabled
-        // bare-arrow items would swallow ↑/↓ from the sheet's multi-line description editor and
-        // silently move the board selection instead. Nil-ing the whole bundle disables every card
-        // command (and ⌘N/⌥⌘N) for the sheet's lifetime.
+        // `boardActions` goes NIL only for the modal sheet: macOS matches menu key equivalents
+        // before that sheet's responder chain, so an enabled ⌘⌫ could mutate behind it. The
+        // nonmodal inspector deliberately keeps the board surface usable; focused text inputs
+        // still publish the shared command guard that blocks conflicting mutations while typing.
         .focusedSceneValue(\.focusedBoard, board)
         .focusedSceneValue(\.selectedCard, selectedCard)
         .focusedSceneValue(\.focusedList, selectedCard?.list)
-        .focusedSceneValue(\.boardActions, selectedDetailCard == nil ? boardActions : nil)
+        .focusedSceneValue(\.boardActions, isCardDetailSheetPresented ? nil : boardActions)
         // M11: the filter is per-board view state (see the property's doc comment) — clear it
         // whenever the board identity changes so switching boards never carries a stale filter
         // over (`testFilterResetsOnBoardSwitch`). The bar's OWN visibility is left as the user set
@@ -99,19 +93,22 @@ struct BoardView: View {
         .onChange(of: collapsedListIDs) { _, _ in clearSelectionIfInvisible() }
         // M11: Esc hides + clears the filter bar — via `.onExitCommand`, the SAME mechanism every
         // other Esc-cancel in this app uses (inline rename/add-card/add-list fields, the
-        // card-detail sheet's own `.onExitCommand { dismiss() }`), NOT a `Commands` keyboard
+        // card-detail editor's own `.onExitCommand`), NOT a `Commands` keyboard
         // shortcut (a bare, no-modifier `.keyboardShortcut(.escape, modifiers: [])` empirically
         // never fires — see `AppCommands`'s "Filter by Label" doc comment). Being responder-chain
         // based is exactly what makes this respect the brief's guard for free: a focused editor's
-        // OWN closer `.onExitCommand` wins before this one ever sees the key, and the card-detail
-        // sheet is a separate key window entirely, so this handler is simply unreachable while
-        // either is active — no explicit `textInputFocused`/`isSheet` check needed. The
+        // OWN closer `.onExitCommand` wins before this one sees the key; a modal card-detail sheet
+        // is a separate key window, and a focused inspector editor is the nearer responder. No
+        // explicit `textInputFocused`/`isSheet` check is needed. The
         // `isFilterBarVisible` guard is still explicit: with the bar already hidden there is
         // nothing to do, and this must not swallow an Esc meant for anything else.
         .onExitCommand {
-            guard isFilterBarVisible else { return }
-            isFilterBarVisible = false
-            activeLabelFilter = []
+            if isFilterBarVisible {
+                isFilterBarVisible = false
+                activeLabelFilter = []
+            } else {
+                onExitCardDetail()
+            }
         }
     }
 
@@ -160,7 +157,9 @@ struct BoardView: View {
                         columnWidth: Self.columnWidth,
                         targetedListID: $targetedListID,
                         selectedCardID: $selectedCardID,
-                        selectedDetailCard: $selectedDetailCard,
+                        onOpenCard: onOpenCard,
+                        onDeleteCard: onDeleteCard,
+                        onDeleteList: onDeleteList,
                         addCardListID: $addCardListID,
                         activeLabelFilter: activeLabelFilter
                     )
@@ -270,14 +269,14 @@ struct BoardView: View {
     private func deleteSelectedCard() {
         guard let card = selectedCard else { return }
         selectedCardID = nil
-        store.deleteCard(card)
+        onDeleteCard(card)
     }
 
-    /// ⌘O / Card ▸ "Open Card": opens the detail sheet for the selected card (the same sheet a
-    /// double-click on the card body opens). No-op when nothing is selected.
+    /// ⌘O / Card ▸ "Open Card": routes the selected card through RootView's configured detail
+    /// presenter (the same path a double-click on the card body uses).
     private func openSelectedCard() {
         guard let card = selectedCard else { return }
-        selectedDetailCard = card
+        onOpenCard(card)
     }
 
     private func moveSelectedCard(_ direction: MoveDirection) {

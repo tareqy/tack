@@ -31,7 +31,9 @@ struct ListColumnView: View {
     let columnWidth: CGFloat
     @Binding var targetedListID: UUID?
     @Binding var selectedCardID: UUID?
-    @Binding var selectedDetailCard: Card?
+    let onOpenCard: (Card) -> Void
+    let onDeleteCard: (Card) -> Void
+    let onDeleteList: (BoardList) -> Void
     /// Command trigger from BoardView (⌘N): when it equals this list's id, open the inline
     /// add-card editor. This column resets it to nil after handling so the same list can retrigger.
     @Binding var addCardListID: UUID?
@@ -113,7 +115,7 @@ struct ListColumnView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                store.deleteList(list)
+                onDeleteList(list)
             }
             .accessibilityIdentifier(AccessibilityID.deleteListConfirm)
             Button("Cancel", role: .cancel) {}
@@ -347,7 +349,8 @@ struct ListColumnView: View {
                         card: card,
                         store: store,
                         selectedCardID: $selectedCardID,
-                        selectedDetailCard: $selectedDetailCard
+                        onOpenCard: onOpenCard,
+                        onDeleteCard: onDeleteCard
                     )
                 }
                 addCardRow

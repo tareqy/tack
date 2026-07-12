@@ -23,8 +23,8 @@ struct BoardActions {
     /// Deletes the selected card with no dialog (NOT undoable since M-E — see
     /// `BoardStore.deleteCard`). No-op when nothing is selected.
     let deleteSelectedCard: () -> Void
-    /// Opens the card-detail sheet for the selected card (Card ▸ "Open Card" / ⌘O). No-op when
-    /// nothing is selected.
+    /// Opens the configured card-detail presentation for the selected card (Card ▸ "Open Card"
+    /// / ⌘O). No-op when nothing is selected.
     let openSelectedCard: () -> Void
     /// Moves the selected card within/across lists (⌘-arrows). No-op at clamped edges.
     let moveSelectedCard: (MoveDirection) -> Void

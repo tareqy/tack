@@ -24,7 +24,8 @@ struct CardView: View {
     let card: Card
     let store: BoardStore
     @Binding var selectedCardID: UUID?
-    @Binding var selectedDetailCard: Card?
+    let onOpenCard: (Card) -> Void
+    let onDeleteCard: (Card) -> Void
 
     /// Same fixed row height as the M2 spike, so its DropMath midline reasoning carries over for
     /// the common case (no labels/due date). Also the initial value of `measuredRowHeight` before
@@ -110,13 +111,13 @@ struct CardView: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         // Finder model: the FIRST click selects immediately (no double-click-interval lag), the
-        // second click opens the detail sheet — opening implying selection is correct, so the two
+        // second click opens the configured detail presentation — opening implies selection, so the two
         // gestures compose `.simultaneously` rather than the old `.exclusively` (which made every
         // selection wait out the double-click interval before showing its ring). Double-click on
         // the TITLE still lands on its own `.doubleClick` gesture (a descendant, which SwiftUI
         // prioritizes over this ancestor one) and renames instead — see `InlineEditableText`.
         .gesture(
-            TapGesture(count: 2).onEnded { selectedDetailCard = card }
+            TapGesture(count: 2).onEnded { onOpenCard(card) }
                 .simultaneously(with: TapGesture(count: 1).onEnded { selectedCardID = card.id })
         )
         .accessibilityElement(children: .contain)
@@ -211,7 +212,7 @@ struct CardView: View {
 
     @ViewBuilder
     private var contextMenu: some View {
-        Button("Open Card") { selectedDetailCard = card }
+        Button("Open Card") { onOpenCard(card) }
         Button("Rename Card") { beginRename = true }
 
         let others = board.sortedLists.filter { $0.id != list.id }
@@ -230,7 +231,7 @@ struct CardView: View {
         // BoardStore.deleteCard — Finder ⌘⌫ pattern).
         Button("Delete Card", role: .destructive) {
             if isSelected { selectedCardID = nil }
-            store.deleteCard(card)
+            onDeleteCard(card)
         }
     }
 

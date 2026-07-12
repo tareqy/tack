@@ -29,6 +29,7 @@ This revision incorporates a verified multi-reviewer PRD review plus user-locked
 - **Final-review corrections (post-implementation):** dropped the *Return-on-focused-list* card-creation alias (§4.3 table, C-01, §9.3 C-01) — it was a redundant entry point with no unique capability, and ⌘N is the canonical keyboard creation path (design's sanctioned focus-routing fallback). Corrected the ⌘F shortcut description to "Toggle label filter bar" to match the implementation (it shows/hides the bar; it is not a focus command), and added the implemented ⌘O (open selected card) and ⇧⌘E (E-01 JSON export) rows to the app-wide shortcuts table.
 - **Pre-ship cleanup:** §9.8 now records that E-01's save-panel leg is manually verified rather than XCUITest-driven (sandboxed, remote-hosted `NSSavePanel`, same class of platform limitation as the board-delete note), while export content correctness stays fully automated via the `--export-to` test hook.
 - **Post-implementation correction:** C-02's description (§4.3 table, §9.3) said "click to edit"; the shipped interaction is double-click the title (or context menu ▸ Rename Card) — a single click selects the card instead, consistent with C-01/C-04's click-to-select convention. Both mentions are corrected to match.
+- **Post-implementation improvement:** C-12 adds an app-wide Settings choice for opening the staged card-detail editor in the established modal Sheet (default) or a native trailing Side Panel. Both surfaces preserve the same explicit Save/Cancel/delete contract and entry points; dirty side-panel drafts are guarded before card, board, or view-mode transitions.
 
 ---
 
@@ -141,7 +142,11 @@ Cards are individual tasks/items within a list — the most interactive element 
 
 #### Card Detail View
 
-When a card is clicked, it opens an expanded detail view (modal or side panel).
+Opening a card presents the same staged detail editor through an app-wide Settings choice: the
+established modal **Sheet** (default) or a native trailing **Side Panel**. The side panel keeps the
+board visible while preserving explicit Save/Cancel, one `applyCardEdits` commit/undo step, and all
+double-click/context-menu/⌘O entry points. A dirty side-panel draft must be explicitly discarded
+before another card, board, or view mode replaces its context.
 
 | # | Feature | Priority | Notes |
 |---|---------|----------|-------|
@@ -149,6 +154,7 @@ When a card is clicked, it opens an expanded detail view (modal or side panel).
 | C-07 | Add label(s) to card (see §4.4) | P0 | Fixed palette of 8 colors; click to add, click again to remove; multi-label support |
 | C-08 | Set due date (see §4.5) | P0 | Date picker, **date-only by default** — see §4.5 for the overdue definition. Optional time-of-day + duration **shipped post-MVP (M-B)**; schema carries `includesTime`/`durationMinutes` (see §6, §7) |
 | C-09 | Activity log — who created/moved/edited the card | P1 | Post-MVP if time permits; single-user edit history, independent of multi-user collaboration (see §7) |
+| C-12 | Choose card-detail presentation | P1 | App-wide Settings choice: Sheet (default) or native trailing Side Panel. The selected choice persists across relaunch; an already-open editor stays on its captured surface until closed. Both reuse one staged editor/save contract |
 
 #### Keyboard Navigation & Movement
 
@@ -411,6 +417,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - **C-08 — Set due date.** Given a card detail view, when the user picks a date (no time), then the card's `dueDate` is stored as that date at local start-of-day with `includesTime == false`, and the due-date badge (D-02) reflects it immediately.
 - **C-10 — Keyboard-navigate card selection.** Given a card is focused, when the user presses an arrow key, then selection moves to the adjacent card in the same list (up/down) or into the adjacent list (left/right) matching visual adjacency, with no mouse interaction required.
 - **C-11 — Keyboard-move selected card.** Given a card is selected, when the user presses ⌘+arrow, then the card reorders within its list (up/down) or moves to the adjacent list at the corresponding position (left/right), producing the same persisted result as the equivalent drag-and-drop (C-03/C-04), and the move is undoable via ⌘Z.
+- **C-12 — Card-detail presentation.** Given a fresh install, when a card is opened, then the established modal Sheet appears. Given Side Panel is selected in Settings, when a card is opened by double-click, context menu, or ⌘O from Board, List, or Calendar view, then the same staged editor appears in a native trailing inspector and the preference survives relaunch. Given that inspector has dirty staged edits, when another card, board, or view mode is requested, then the user must choose Discard Changes or Keep Editing; Keep Editing preserves the complete draft and cancels the transition.
 
 ### 9.4 Labels
 
@@ -489,6 +496,7 @@ Given/When/Then acceptance criteria for every P0 feature row in §4.
 - LB-03 Search/filter by label (⌘F)
 - E-02 Backup/restore — import exported JSON (shipped post-MVP; Add to Existing / Replace All, neither undoable — see §4.6)
 - Optional due-date time-of-day (shipped post-MVP; `includesTime`/`durationMinutes` — see §4.5)
+- C-12 choose card-detail presentation (Sheet default or native trailing Side Panel)
 - Custom-theme dark/light contrast audit & accessibility polish
 - Trello import (from Trello's JSON export)
 

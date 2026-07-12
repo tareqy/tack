@@ -24,11 +24,14 @@ class TackUITestCase: XCTestCase {
     /// (the default) wipes the store first for a clean start; the store name defaults to a
     /// sanitized form of the test's name so tests don't collide on disk. `appearance` (M10, e.g.
     /// "dark") is passed straight through as `--appearance <value>`, the test-only override
-    /// `AppLaunchConfig`/`TackApp` reads to force `NSApp.appearance` — omitted (nil, the default)
-    /// for every pre-M10 call site, which is unaffected.
+    /// `AppLaunchConfig`/`TackApp` reads to force `NSApp.appearance`. `cardDetailPresentation`
+    /// similarly seeds the namespaced app-wide preference as `sheet` / `side-panel`; preserved-
+    /// store relaunches deliberately omit that override so persistence tests read UserDefaults
+    /// rather than silently re-seeding the expected value.
     @discardableResult
     func launch(fixture: String = "standard", reset: Bool = true, storeName: String? = nil,
-                appearance: String? = nil, exportTo: String? = nil,
+                appearance: String? = nil, cardDetailPresentation: String? = nil,
+                exportTo: String? = nil,
                 importFrom: String? = nil, importMode: String? = nil) -> XCUIApplication {
         let resolvedStore = storeName ?? Self.sanitized(name)
         currentFixture = fixture
@@ -39,6 +42,9 @@ class TackUITestCase: XCTestCase {
         if reset { args.append("--reset") }
         if let appearance {
             args.append(contentsOf: ["--appearance", appearance])
+        }
+        if let cardDetailPresentation {
+            args.append(contentsOf: ["--card-detail-presentation", cardDetailPresentation])
         }
         // E-01 export e2e: `--export-to <file>` makes the app write a JSON export of the seeded
         // boards into the sandbox `UITest/` dir on launch (see AppLaunchConfig.exportTo).
@@ -65,7 +71,8 @@ class TackUITestCase: XCTestCase {
     }
 
     /// Terminates and relaunches against the SAME on-disk store WITHOUT `--reset`, so the
-    /// previous launch's mutations persist and can be re-asserted.
+    /// previous launch's mutations persist and can be re-asserted. Launch-only overrides,
+    /// including `--card-detail-presentation`, are intentionally not forwarded.
     @discardableResult
     func relaunchPreservingStore() -> XCUIApplication {
         app?.terminate()

@@ -23,13 +23,14 @@ import SwiftUI
 struct CalendarBoardView: View {
     let board: Board
     let store: BoardStore
+    let isCardDetailSheetPresented: Bool
+    let onOpenCard: (Card) -> Void
+    let onDeleteCard: (Card) -> Void
 
     /// Calendar-mode single-card selection. Same @State-leak caveat as ListBoardView's:
     /// `detailContent` swaps only the `board:` argument across a board switch (the view is NOT
     /// recreated), so this — and the month anchor — reset via `.onChange(of: board.id)` below.
     @State private var selectedCardID: UUID?
-    /// The card currently showing its detail sheet (same `.sheet(item:)` shape as its siblings).
-    @State private var selectedDetailCard: Card?
     /// First instant of the displayed month (see the clock note above).
     @State private var monthAnchor = CalendarMonthGrid.monthStart(containing: Date(), calendar: .current)
     /// The day currently highlighted as a drop target (nil when no drag hovers a cell).
@@ -51,21 +52,13 @@ struct CalendarBoardView: View {
         .navigationTitle(board.name)
         // M8 theme wash, verbatim from BoardView: cells/chips keep their own surfaces on top.
         .background(themeBackground)
-        .sheet(item: $selectedDetailCard) { card in
-            CardDetailView(card: card, store: store, onDelete: {
-                // Order matters — see CardDetailView.onDelete: close the sheet (nil the item)
-                // BEFORE deleting, so no re-render evaluates the sheet against a deleted card.
-                selectedDetailCard = nil
-                store.deleteCard(card)
-            })
-        }
-        // Exported command surface — the same keys the siblings publish, including the M7 rule:
-        // boardActions goes NIL while the detail sheet is up (menu key equivalents match before
-        // the sheet's responder chain; an enabled ⌘⌫ would delete the card behind its own sheet).
+        // Exported command surface — the same keys the siblings publish. A modal sheet still nils
+        // boardActions; the nonmodal inspector deliberately keeps board commands available, with
+        // the shared focused-text guard blocking conflicts while an editor has keyboard focus.
         .focusedSceneValue(\.focusedBoard, board)
         .focusedSceneValue(\.selectedCard, selectedCard)
         .focusedSceneValue(\.focusedList, selectedCard?.list)
-        .focusedSceneValue(\.boardActions, selectedDetailCard == nil ? boardActions : nil)
+        .focusedSceneValue(\.boardActions, isCardDetailSheetPresented ? nil : boardActions)
         .onChange(of: board.id) { _, _ in
             // A board switch is a context switch: drop the old board's selection and snap the
             // grid back to the current month.
@@ -275,7 +268,7 @@ struct CalendarBoardView: View {
         // The CardView/CardListRow click grammar: first click selects immediately, double-click
         // opens (`.simultaneously`, not `.exclusively` — no selection lag).
         .gesture(
-            TapGesture(count: 2).onEnded { selectedDetailCard = card }
+            TapGesture(count: 2).onEnded { onOpenCard(card) }
                 .simultaneously(with: TapGesture(count: 1).onEnded { selectedCardID = card.id })
         )
         // Representation Text (NOT .accessibilityValue — empty under XCUITest on macOS, the M6
@@ -292,7 +285,7 @@ struct CalendarBoardView: View {
         // The CardListRow v1 menu: Open + Delete only (moving between LISTS lives on the canvas;
         // moving between DAYS is the drag).
         .contextMenu {
-            Button("Open Card") { selectedDetailCard = card }
+            Button("Open Card") { onOpenCard(card) }
             Button("Delete Card", role: .destructive) { deleteCard(card) }
         }
     }
@@ -328,7 +321,7 @@ struct CalendarBoardView: View {
                             card: card,
                             isSelected: selectedCardID == card.id,
                             onSelect: { selectedCardID = card.id },
-                            onOpen: { selectedDetailCard = card },
+                            onOpen: { onOpenCard(card) },
                             onDelete: { deleteCard(card) }
                         )
                     }
@@ -412,19 +405,19 @@ struct CalendarBoardView: View {
     private func deleteSelectedCard() {
         guard let card = selectedCard else { return }
         selectedCardID = nil
-        store.deleteCard(card)
+        onDeleteCard(card)
     }
 
     private func openSelectedCard() {
         guard let card = selectedCard else { return }
-        selectedDetailCard = card
+        onOpenCard(card)
     }
 
     /// Chip/rail context-menu delete: nil the selection FIRST if it's the deleted card (the
     /// CardView discipline), then one store call — NOT undoable since M-E (see BoardStore.deleteCard).
     private func deleteCard(_ card: Card) {
         if selectedCardID == card.id { selectedCardID = nil }
-        store.deleteCard(card)
+        onDeleteCard(card)
     }
 
     // MARK: - Formatters

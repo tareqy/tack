@@ -14,13 +14,14 @@ import SwiftUI
 struct ListBoardView: View {
     let board: Board
     let store: BoardStore
+    let isCardDetailSheetPresented: Bool
+    let onOpenCard: (Card) -> Void
+    let onDeleteCard: (Card) -> Void
 
     /// List-mode single-card selection. Same @State-leak caveat as `BoardView`'s filter state:
     /// `detailContent` swaps only the `board:` argument across a board switch (the view is NOT
     /// recreated), so this is explicitly reset via `.onChange(of: board.id)` below.
     @State private var selectedCardID: UUID?
-    /// The card currently showing its detail sheet (same `.sheet(item:)` shape as BoardView).
-    @State private var selectedDetailCard: Card?
 
     var body: some View {
         ScrollView {
@@ -45,21 +46,13 @@ struct ListBoardView: View {
         // M8 theme wash, verbatim from BoardView: attached after frame so it covers the whole
         // detail area edge-to-edge; rows keep their own cardSurface backing on top.
         .background(themeBackground)
-        .sheet(item: $selectedDetailCard) { card in
-            CardDetailView(card: card, store: store, onDelete: {
-                // Order matters — see CardDetailView.onDelete: close the sheet (nil the item)
-                // BEFORE deleting, so no re-render evaluates the sheet against a deleted card.
-                selectedDetailCard = nil
-                store.deleteCard(card)
-            })
-        }
-        // Exported command surface — the same keys BoardView publishes, including the M7 rule:
-        // boardActions goes NIL while the detail sheet is up (menu key equivalents match before
-        // the sheet's responder chain; an enabled ⌘⌫ would delete the card behind its own sheet).
+        // Exported command surface — the same keys BoardView publishes. A modal sheet still nils
+        // boardActions; the nonmodal inspector deliberately keeps board commands available, with
+        // the shared focused-text guard blocking conflicts while an editor has keyboard focus.
         .focusedSceneValue(\.focusedBoard, board)
         .focusedSceneValue(\.selectedCard, selectedCard)
         .focusedSceneValue(\.focusedList, selectedCard?.list)
-        .focusedSceneValue(\.boardActions, selectedDetailCard == nil ? boardActions : nil)
+        .focusedSceneValue(\.boardActions, isCardDetailSheetPresented ? nil : boardActions)
         .onChange(of: board.id) { _, _ in clearSelectionIfInvisible() }
     }
 
@@ -92,7 +85,7 @@ struct ListBoardView: View {
                 card: card,
                 isSelected: selectedCardID == card.id,
                 onSelect: { selectedCardID = card.id },
-                onOpen: { selectedDetailCard = card },
+                onOpen: { onOpenCard(card) },
                 onDelete: { deleteCard(card) }
             )
         }
@@ -170,12 +163,12 @@ struct ListBoardView: View {
     private func deleteSelectedCard() {
         guard let card = selectedCard else { return }
         selectedCardID = nil
-        store.deleteCard(card)
+        onDeleteCard(card)
     }
 
     private func openSelectedCard() {
         guard let card = selectedCard else { return }
-        selectedDetailCard = card
+        onOpenCard(card)
     }
 
     private func moveSelection(_ direction: MoveDirection) {
@@ -188,7 +181,7 @@ struct ListBoardView: View {
     /// discipline), then one store call — NOT undoable since M-E (see BoardStore.deleteCard).
     private func deleteCard(_ card: Card) {
         if selectedCardID == card.id { selectedCardID = nil }
-        store.deleteCard(card)
+        onDeleteCard(card)
     }
 }
 

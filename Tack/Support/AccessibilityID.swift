@@ -23,7 +23,18 @@ enum AccessibilityID {
     static func addCardButton(list: String) -> String { "add-card-\(list)" }
     static let addListButton = "add-list"
     static let sidebarFilterField = "sidebar-filter"
+    /// Existing card-editor root wire value. Despite the historical property name, this stays on
+    /// `CardDetailView` in BOTH sheet and inspector presentations so established queries remain
+    /// valid and surface-agnostic.
     static let cardDetailSheet = "card-detail"
+    /// Inspector chrome marker, separate from the editor-root id above. This lets UI tests assert
+    /// which surface is active without changing any existing card-detail descendant queries.
+    static let cardDetailInspector = "card-detail-inspector"
+    /// Detached marker whose value is the active presentation raw value (`sheet`/`side-panel`).
+    /// Absent while no card detail is presented.
+    static let cardDetailPresentationValue = "card-detail-presentation-value"
+    /// Settings scene picker for the persisted app-wide presentation preference.
+    static let cardDetailSettingsPicker = "card-detail-settings-picker"
     static func dueDateBadge(card: String) -> String { "due-badge-\(card)" }
     static func labelChip(_ color: String) -> String { "label-chip-\(color)" }
     static let emptyStateCreateBoardButton = "empty-create-board"

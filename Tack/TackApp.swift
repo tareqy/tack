@@ -25,6 +25,7 @@ struct TackApp: App {
             // normal launch never touches NSApp.appearance (keeps README's "inert for normal
             // launch" claim true).
             Self.applyAppearanceOverride(config.appearance)
+            config.configureCardDetailPresentationDefaults()
 
             // Test-store failures are a test-harness bug, not a user-facing condition — keep the
             // hard failure so it surfaces loudly in CI rather than silently degrading.
@@ -92,6 +93,10 @@ struct TackApp: App {
         // The menu-bar command layer (M7). Attached at the WindowGroup scene level — the M3 trap is
         // that commands/toolbars contributed from inside the split view never register.
         .commands { AppCommands() }
+
+        Settings {
+            CardDetailSettingsView(defaultsKey: config.cardDetailPresentationDefaultsKey)
+        }
     }
 
     /// M10 test-only hook: forces the app's whole appearance from `AppLaunchConfig.appearance`

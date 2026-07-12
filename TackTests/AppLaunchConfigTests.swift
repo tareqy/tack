@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Tack
 
@@ -6,6 +7,84 @@ import Testing
 /// direct-construction pattern the rest of `AppLaunchConfig` already supports for unit testing.
 @Suite("AppLaunchConfig")
 struct AppLaunchConfigTests {
+    // MARK: - Card detail presentation preference
+
+    @Test("card detail presentation has stable wire values and user-facing names")
+    func cardDetailPresentationWireValues() {
+        #expect(CardDetailPresentation.sheet.rawValue == "sheet")
+        #expect(CardDetailPresentation.sheet.displayName == "Sheet")
+        #expect(CardDetailPresentation.sidePanel.rawValue == "side-panel")
+        #expect(CardDetailPresentation.sidePanel.displayName == "Side Panel")
+    }
+
+    @Test("card detail presentation falls back to sheet for missing or unknown values")
+    func cardDetailPresentationFallback() {
+        #expect(CardDetailPresentation(storedValue: nil) == .sheet)
+        #expect(CardDetailPresentation(storedValue: "") == .sheet)
+        #expect(CardDetailPresentation(storedValue: "future-presentation") == .sheet)
+        #expect(CardDetailPresentation(storedValue: "side-panel") == .sidePanel)
+    }
+
+    @Test("card detail presentation override parses stable values and falls back safely")
+    func cardDetailPresentationOverrideParsing() {
+        #expect(AppLaunchConfig(arguments: [
+            "--uitest", "--card-detail-presentation", "side-panel",
+        ]).cardDetailPresentationOverride == .sidePanel)
+        #expect(AppLaunchConfig(arguments: [
+            "--uitest", "--card-detail-presentation", "unknown",
+        ]).cardDetailPresentationOverride == .sheet)
+        #expect(AppLaunchConfig(arguments: [
+            "--uitest", "--card-detail-presentation",
+        ]).cardDetailPresentationOverride == nil)
+        #expect(AppLaunchConfig(arguments: ["--uitest"]).cardDetailPresentationOverride == nil)
+    }
+
+    @Test("card detail presentation defaults key is namespaced per UI-test store")
+    func cardDetailPresentationDefaultsKeyNamespacing() {
+        #expect(AppLaunchConfig(arguments: []).cardDetailPresentationDefaultsKey == "cardDetailPresentation")
+        #expect(AppLaunchConfig(arguments: [
+            "--uitest",
+        ]).cardDetailPresentationDefaultsKey == "cardDetailPresentation.default")
+        #expect(AppLaunchConfig(arguments: [
+            "--uitest", "--store-name", "s1",
+        ]).cardDetailPresentationDefaultsKey == "cardDetailPresentation.s1")
+    }
+
+    @Test("UI-test reset clears the presentation before applying an override")
+    func cardDetailPresentationResetAndOverride() {
+        let suiteName = "AppLaunchConfigTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let key = "cardDetailPresentation.s1"
+        defaults.set(CardDetailPresentation.sidePanel.rawValue, forKey: key)
+
+        AppLaunchConfig(arguments: [
+            "--uitest", "--store-name", "s1", "--reset",
+        ]).configureCardDetailPresentationDefaults(in: defaults)
+        #expect(defaults.object(forKey: key) == nil)
+
+        AppLaunchConfig(arguments: [
+            "--uitest", "--store-name", "s1", "--reset",
+            "--card-detail-presentation", "side-panel",
+        ]).configureCardDetailPresentationDefaults(in: defaults)
+        #expect(defaults.string(forKey: key) == CardDetailPresentation.sidePanel.rawValue)
+    }
+
+    @Test("production launches never mutate presentation defaults from launch flags")
+    func cardDetailPresentationProductionLaunchIsInert() {
+        let suiteName = "AppLaunchConfigTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(CardDetailPresentation.sidePanel.rawValue, forKey: "cardDetailPresentation")
+        AppLaunchConfig(arguments: [
+            "--reset", "--card-detail-presentation", "sheet",
+        ]).configureCardDetailPresentationDefaults(in: defaults)
+
+        #expect(defaults.string(forKey: "cardDetailPresentation") == CardDetailPresentation.sidePanel.rawValue)
+    }
+
     @Test("appearance is nil when the flag is absent")
     func appearanceAbsentIsNil() {
         let config = AppLaunchConfig(arguments: ["--uitest", "--fixture", "standard"])

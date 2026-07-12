@@ -16,6 +16,10 @@ struct AppLaunchConfig {
     /// (any normal production launch, and any test that omits the flag) defers to the system/user
     /// appearance, unchanged.
     let appearance: String?
+    /// Card-detail presentation override, test-only: `--card-detail-presentation sheet|side-panel`
+    /// seeds the namespaced preference before `RootView` is created. Invalid values deliberately
+    /// resolve to `.sheet`, matching corrupt/future persisted-value fallback behavior.
+    let cardDetailPresentationOverride: CardDetailPresentation?
     /// E-01 export e2e hook, test-only: `--export-to <filename>` makes a `--uitest` launch write a
     /// JSON export of every seeded board to `UITest/<filename>` inside the sandbox container, right
     /// after seeding, then continue launching normally. It exists because the production Export path
@@ -45,6 +49,11 @@ struct AppLaunchConfig {
         fixture = AppLaunchConfig.value(after: "--fixture", in: arguments)
         storeName = AppLaunchConfig.value(after: "--store-name", in: arguments) ?? "default"
         appearance = AppLaunchConfig.value(after: "--appearance", in: arguments)
+        if let presentation = AppLaunchConfig.value(after: "--card-detail-presentation", in: arguments) {
+            cardDetailPresentationOverride = CardDetailPresentation(storedValue: presentation)
+        } else {
+            cardDetailPresentationOverride = nil
+        }
         exportTo = AppLaunchConfig.value(after: "--export-to", in: arguments)
         importFrom = AppLaunchConfig.value(after: "--import-from", in: arguments)
         importMode = AppLaunchConfig.value(after: "--import-mode", in: arguments)
@@ -80,5 +89,26 @@ extension AppLaunchConfig {
     /// key. `TackApp.init`'s `--reset` block clears it alongside the selection key.
     var viewModeDefaultsKey: String {
         isUITest ? "boardViewModes.\(storeName)" : "boardViewModes"
+    }
+
+    /// UserDefaults key backing the app-wide card-detail presentation preference. Each UI-test
+    /// store gets its own key so relaunch tests can preserve the choice without leaking it into
+    /// another test or into the production preference.
+    var cardDetailPresentationDefaultsKey: String {
+        isUITest ? "cardDetailPresentation.\(storeName)" : "cardDetailPresentation"
+    }
+
+    /// Applies UI-test lifecycle semantics to the presentation preference. A fresh `--reset`
+    /// launch clears the store-specific value; an optional launch override is then written so it
+    /// wins deterministically. Normal launches are inert even if they contain similarly named
+    /// arguments, keeping production ownership with the Settings scene.
+    func configureCardDetailPresentationDefaults(in defaults: UserDefaults = .standard) {
+        guard isUITest else { return }
+        if reset {
+            defaults.removeObject(forKey: cardDetailPresentationDefaultsKey)
+        }
+        if let cardDetailPresentationOverride {
+            defaults.set(cardDetailPresentationOverride.rawValue, forKey: cardDetailPresentationDefaultsKey)
+        }
     }
 }

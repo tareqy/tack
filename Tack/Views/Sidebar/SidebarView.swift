@@ -7,6 +7,9 @@ struct SidebarView: View {
     @Query(sort: \Area.position) private var areas: [Area]
 
     @Binding var selection: UUID?
+    /// RootView owns any live card-detail presentation, so it must clear an inspected card before
+    /// the store destroys that card's board graph.
+    let onDeleteBoard: (Board) -> Void
 
     @State private var filterQuery = ""
     @State private var editingBoard: Board?
@@ -217,7 +220,7 @@ struct SidebarView: View {
             boards: boards.map { (id: $0.id, position: $0.position) }
         )
 
-        store.deleteBoard(board)
+        onDeleteBoard(board)
         boardPendingDeletion = nil
 
         if wasSelected {

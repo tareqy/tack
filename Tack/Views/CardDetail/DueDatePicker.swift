@@ -45,6 +45,7 @@ struct DueDatePicker: View {
                     )
                     .datePickerStyle(.field)
                     .labelsHidden()
+                    .reportsTextInputFocus()
                     .accessibilityIdentifier(AccessibilityID.dueDatePickerField)
 
                     Button("Clear", role: .destructive) {
@@ -67,6 +68,7 @@ struct DueDatePicker: View {
                         )
                         .datePickerStyle(.field)
                         .labelsHidden()
+                        .reportsTextInputFocus()
                         .accessibilityIdentifier(AccessibilityID.dueTimeField)
 
                         Picker("Duration", selection: $durationMinutes) {

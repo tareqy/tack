@@ -19,6 +19,13 @@ struct RootView: View {
     /// decoded map, seeded on appear and re-encoded on change.
     @AppStorage private var viewModesRaw: String?
     @State private var viewModes: [UUID: BoardViewMode] = [:]
+    /// App-wide Settings preference plus a SNAPSHOT of the surface chosen for the current open.
+    /// Keeping these separate is what makes a Settings change mid-edit apply only next time.
+    @AppStorage private var cardDetailPresentationRaw: String
+    @State private var presentedCardID: UUID?
+    @State private var activeCardDetailPresentation: CardDetailPresentation?
+    @State private var isCardDetailDirty = false
+    @State private var pendingCardDetailTransition: PendingCardDetailTransition?
     @State private var isPresentingCreateBoard = false
 
     /// E-01 export (⇧⌘E): the document is built on demand when Export is invoked, then the
@@ -51,9 +58,20 @@ struct RootView: View {
     @State private var importSelfCheck: String?
     @State private var importHookHasRun = false
 
+    private enum PendingCardDetailTransition {
+        case openCard(UUID)
+        case selectBoard(UUID?)
+        case setViewMode(BoardViewMode)
+        case presentImporter
+    }
+
     init(config: AppLaunchConfig) {
         _selectedBoardIDRaw = AppStorage(config.selectedBoardDefaultsKey)
         _viewModesRaw = AppStorage(config.viewModeDefaultsKey)
+        _cardDetailPresentationRaw = AppStorage(
+            wrappedValue: CardDetailPresentation.sheet.rawValue,
+            config.cardDetailPresentationDefaultsKey
+        )
         // Test-only affordance — honored ONLY under --uitest (mirrors how --appearance is gated
         // in TackApp.init), so a normal launch can never be made to write an export file.
         exportToFilename = config.isUITest ? config.exportTo : nil
@@ -62,7 +80,8 @@ struct RootView: View {
     }
 
     var body: some View {
-        ZStack {
+        Group {
+            ZStack {
             // A detached marker (same trick as SpikeRootView's fallback), not an ancestor of
             // anything: empirically, `.accessibilityIdentifier` on `NavigationSplitView` itself
             // does NOT reach the underlying AX element (it keeps SwiftUI's auto-generated
@@ -110,7 +129,7 @@ struct RootView: View {
             }
 
             NavigationSplitView {
-                SidebarView(selection: $selectedBoardID)
+                SidebarView(selection: selectedBoardBinding, onDeleteBoard: deleteBoard)
             } detail: {
                 detailContent
             }
@@ -173,6 +192,10 @@ struct RootView: View {
         .onChange(of: boards.count) { _, _ in runExportSelfCheckIfNeeded() }
         .onAppear(perform: runImportSelfCheckIfNeeded)
         .onChange(of: undoManagerID) { _, _ in wireUndoManager() }
+        .onChange(of: allCardIDs) { _, newIDs in
+            guard let presentedCardID, !newIDs.contains(presentedCardID) else { return }
+            closeCardDetail()
+        }
         .onChange(of: selectedBoardID) { _, newValue in
             selectedBoardIDRaw = newValue?.uuidString
             autoExpandAreaIfNeeded(for: newValue)
@@ -182,8 +205,15 @@ struct RootView: View {
         }
         .sheet(isPresented: $isPresentingCreateBoard) {
             CreateBoardSheet(store: store) { created in
-                selectedBoardID = created.id
+                requestBoardSelection(created.id)
             }
+        }
+        .sheet(isPresented: cardDetailSheetBinding) {
+            cardDetailEditor(presentation: .sheet)
+        }
+        .inspector(isPresented: cardDetailInspectorBinding) {
+            cardDetailEditor(presentation: .sidePanel)
+                .inspectorColumnWidth(min: 340, ideal: 380, max: 520)
         }
         // E-01: the JSON export save panel. Hosted here (not in AppCommands — a `Commands` value
         // can't present a `.fileExporter`); the ⇧⌘E command flips `isPresentingExporter` after
@@ -220,8 +250,9 @@ struct RootView: View {
                 Button("Replace All Boards", role: .destructive) { completeImport(pending, replacing: true) }
             }
             Button("Cancel", role: .cancel) { cancelImport() }
-        } message: { pending in
-            Text(importDialogMessage(pending))
+            } message: { pending in
+                Text(importDialogMessage(pending))
+            }
         }
         // E-02: the app's first user-facing error alert. Every error reaching here is an
         // ImportError (the store wraps save failures), so the copy is always specific and always
@@ -238,6 +269,17 @@ struct RootView: View {
         } message: { error in
             Text([error.errorDescription, error.recoverySuggestion].compactMap { $0 }.joined(separator: "\n\n"))
         }
+        .confirmationDialog(
+            "Discard Changes?",
+            isPresented: isPresentingCardDetailTransitionDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Discard Changes", role: .destructive, action: discardAndPerformPendingTransition)
+            Button("Keep Editing", role: .cancel) { pendingCardDetailTransition = nil }
+        } message: {
+            Text("This card has unsaved changes. Discard them to continue, or keep editing the current card.")
+        }
+        .onExitCommand(perform: closeSidePanelFromExitCommand)
         // Always-present board-navigation command surface (New Board, ⌘1–⌘9, ⇧⌘E export) — see AppCommands.
         .focusedSceneValue(\.boardSelectionActions, boardSelectionActions)
     }
@@ -254,6 +296,45 @@ struct RootView: View {
         return boards.first(where: { $0.id == selectedBoardID })
     }
 
+    /// Every card currently reachable from the live board query. Root stores only a UUID so a
+    /// deleted SwiftData object is never retained by presentation state.
+    private var allCards: [Card] {
+        boards.flatMap { $0.sortedLists }.flatMap { $0.sortedCards }
+    }
+
+    private var allCardIDs: Set<UUID> { Set(allCards.map(\.id)) }
+
+    private var presentedCard: Card? {
+        guard let presentedCardID else { return nil }
+        return allCards.first(where: { $0.id == presentedCardID })
+    }
+
+    private var preferredCardDetailPresentation: CardDetailPresentation {
+        CardDetailPresentation(storedValue: cardDetailPresentationRaw)
+    }
+
+    private var isCardDetailSheetPresented: Bool {
+        activeCardDetailPresentation == .sheet && presentedCard != nil
+    }
+
+    private var selectedBoardBinding: Binding<UUID?> {
+        Binding(get: { selectedBoardID }, set: requestBoardSelection)
+    }
+
+    private var cardDetailSheetBinding: Binding<Bool> {
+        Binding(
+            get: { isCardDetailSheetPresented },
+            set: { if !$0 { closeCardDetail() } }
+        )
+    }
+
+    private var cardDetailInspectorBinding: Binding<Bool> {
+        Binding(
+            get: { activeCardDetailPresentation == .sidePanel && presentedCard != nil },
+            set: { if !$0 { closeCardDetail() } }
+        )
+    }
+
     /// The selected board's mode; `.board` when unset, so every existing board keeps its
     /// current look until the user opts in per board.
     private var selectedBoardViewMode: BoardViewMode {
@@ -265,6 +346,11 @@ struct RootView: View {
     /// selection (the menu gate allows enabled-with-no-selection edge states; this is the
     /// backstop).
     private func setViewMode(_ mode: BoardViewMode) {
+        guard selectedBoardID != nil, mode != selectedBoardViewMode else { return }
+        requestCardDetailTransition(.setViewMode(mode))
+    }
+
+    private func applyViewMode(_ mode: BoardViewMode) {
         guard let selectedBoardID else { return }
         viewModes[selectedBoardID] = mode
     }
@@ -287,13 +373,138 @@ struct RootView: View {
             selectBoard: { position in
                 let ordered = sortedBoards
                 guard position >= 1, position <= ordered.count else { return }
-                selectedBoardID = ordered[position - 1].id
+                requestBoardSelection(ordered[position - 1].id)
             },
             boardNames: sortedBoards.map(\.name),
             exportAllBoards: presentExporter,
-            importBoards: { isPresentingImporter = true },
+            importBoards: requestImporter,
             setViewMode: setViewMode
         )
+    }
+
+    // MARK: - Card detail presentation
+
+    /// All entry points (board/list/calendar double-click, context menu, and ⌘O) converge here.
+    /// Reopening the already-presented card is a no-op so it can never reset a staged draft.
+    private func openCardDetail(_ card: Card) {
+        guard presentedCardID != card.id else { return }
+        requestCardDetailTransition(.openCard(card.id))
+    }
+
+    private func requestBoardSelection(_ boardID: UUID?) {
+        guard boardID != selectedBoardID else { return }
+        requestCardDetailTransition(.selectBoard(boardID))
+    }
+
+    /// Import can replace the complete board graph. A dirty inspector requires an explicit
+    /// discard before the file workflow begins, so a later atomic-save failure can never be the
+    /// event that silently loses its draft. A clean editor stays open until the chosen import
+    /// mode actually changes its context.
+    private func requestImporter() {
+        if presentedCardID != nil, isCardDetailDirty {
+            pendingCardDetailTransition = .presentImporter
+        } else {
+            isPresentingImporter = true
+        }
+    }
+
+    /// Dirty drafts guard only genuine context changes. Explicit Cancel/Esc/Delete continue to
+    /// close immediately because those controls already communicate their discard semantics.
+    private func requestCardDetailTransition(_ transition: PendingCardDetailTransition) {
+        if presentedCardID != nil, isCardDetailDirty {
+            pendingCardDetailTransition = transition
+        } else {
+            performCardDetailTransition(transition)
+        }
+    }
+
+    private var isPresentingCardDetailTransitionDialog: Binding<Bool> {
+        Binding(
+            get: { pendingCardDetailTransition != nil },
+            set: { if !$0 { pendingCardDetailTransition = nil } }
+        )
+    }
+
+    private func discardAndPerformPendingTransition() {
+        guard let transition = pendingCardDetailTransition else { return }
+        pendingCardDetailTransition = nil
+        performCardDetailTransition(transition)
+    }
+
+    private func performCardDetailTransition(_ transition: PendingCardDetailTransition) {
+        switch transition {
+        case .openCard(let cardID):
+            guard allCardIDs.contains(cardID) else { return }
+            // Snapshot Settings NOW. Changing Settings during this presentation cannot move it;
+            // explicitly opening another card is the next open and consults the latest choice.
+            presentedCardID = cardID
+            activeCardDetailPresentation = preferredCardDetailPresentation
+            isCardDetailDirty = false
+        case .selectBoard(let boardID):
+            closeCardDetail()
+            selectedBoardID = boardID
+        case .setViewMode(let mode):
+            closeCardDetail()
+            applyViewMode(mode)
+        case .presentImporter:
+            closeCardDetail()
+            isPresentingImporter = true
+        }
+    }
+
+    private func closeCardDetail() {
+        presentedCardID = nil
+        activeCardDetailPresentation = nil
+        isCardDetailDirty = false
+        pendingCardDetailTransition = nil
+    }
+
+    /// Esc remains a presentation-level Cancel even after keyboard focus has returned to the
+    /// nonmodal board/list/calendar surface. Modal sheets handle Esc inside their own key window.
+    private func closeSidePanelFromExitCommand() {
+        guard activeCardDetailPresentation == .sidePanel else { return }
+        closeCardDetail()
+    }
+
+    /// Editor identity is pinned to the card UUID so swapping cards always seeds fresh staged
+    /// state. Every close/delete callback clears Root's ID before any model destruction.
+    @ViewBuilder
+    private func cardDetailEditor(presentation: CardDetailPresentation) -> some View {
+        if let card = presentedCard {
+            CardDetailView(
+                card: card,
+                store: store,
+                presentation: presentation,
+                onDelete: { deleteCard(card) },
+                onClose: closeCardDetail,
+                onDirtyChange: { dirty in
+                    guard presentedCardID == card.id else { return }
+                    isCardDetailDirty = dirty
+                }
+            )
+            .id(card.id)
+        }
+    }
+
+    private func deleteCard(_ card: Card) {
+        if presentedCardID == card.id {
+            closeCardDetail()
+        }
+        store.deleteCard(card)
+    }
+
+    private func deleteList(_ list: BoardList) {
+        if presentedCard?.list?.id == list.id {
+            closeCardDetail()
+        }
+        store.deleteList(list)
+    }
+
+    private func deleteBoard(_ board: Board) {
+        if board.sortedLists.flatMap({ $0.sortedCards }).contains(where: { $0.id == presentedCardID }) {
+            closeCardDetail()
+        }
+        store.deleteBoard(board)
     }
 
     /// E-01 export e2e self-check (test-only, `--export-to <file>`): encodes every board through
@@ -397,11 +608,16 @@ struct RootView: View {
     private func completeImport(_ pending: PendingImport, replacing: Bool) {
         pendingImport = nil
         do {
+            // Replace destroys the complete board graph. Clear any presented card ID first so
+            // SwiftUI can never re-evaluate an editor against a deleted SwiftData object.
+            if replacing {
+                closeCardDetail()
+            }
             let imported = replacing
                 ? try store.replaceAllBoards(with: pending.envelope)
                 : try store.importBoards(pending.envelope)
             if let first = imported.first {
-                selectedBoardID = first.id
+                requestBoardSelection(first.id)
             }
             publishImportMarker(importSuccessSummary())
         } catch let error as ImportError {
@@ -516,11 +732,31 @@ struct RootView: View {
             // bar, month anchor) — accepted and honest: a mode switch is a context switch.
             switch selectedBoardViewMode {
             case .list:
-                ListBoardView(board: selectedBoard, store: store)
+                ListBoardView(
+                    board: selectedBoard,
+                    store: store,
+                    isCardDetailSheetPresented: isCardDetailSheetPresented,
+                    onOpenCard: openCardDetail,
+                    onDeleteCard: deleteCard
+                )
             case .calendar:
-                CalendarBoardView(board: selectedBoard, store: store)
+                CalendarBoardView(
+                    board: selectedBoard,
+                    store: store,
+                    isCardDetailSheetPresented: isCardDetailSheetPresented,
+                    onOpenCard: openCardDetail,
+                    onDeleteCard: deleteCard
+                )
             case .board:
-                BoardView(board: selectedBoard, store: store)
+                BoardView(
+                    board: selectedBoard,
+                    store: store,
+                    isCardDetailSheetPresented: isCardDetailSheetPresented,
+                    onOpenCard: openCardDetail,
+                    onDeleteCard: deleteCard,
+                    onDeleteList: deleteList,
+                    onExitCardDetail: closeSidePanelFromExitCommand
+                )
             }
         } else {
             // Same native empty-state dressing as the zero-boards state next door — a bare
